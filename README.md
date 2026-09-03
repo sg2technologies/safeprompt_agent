@@ -22,7 +22,7 @@ This repository is the **Community edition**: the Rust Agent (`agent/` at the re
 
 ## Installation
 
-### Option A — Pre-built installer (recommended)
+### Option A — Pre-built installer (recommended) - Download the exe
 
 The simplest way to get started on Windows: download the signed installer from [safeprompt.pro](https://www.safeprompt.pro/). It bundles the agent, the browser extension, and on-device OCR support in one package — no build tools required.
 
