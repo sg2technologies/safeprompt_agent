@@ -1,10 +1,12 @@
 # SafePrompt Agent
 
-**On-device data-loss-prevention scanning for AI chat tools — Community edition.**
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
+**Open-source, on-device data-loss-prevention scanning for AI chat tools.**
 
 SafePrompt Agent runs locally on your machine and inspects text and files *before* they reach ChatGPT, Claude, Gemini, Copilot, or any other AI tool — catching secrets, personal data, financial information, and prompt-injection attempts, and masking or blocking them as you configure. Nothing is scanned in the cloud; detection runs entirely on-device.
 
-This repository is the **Community edition engine**, written in Rust — the same detection core used across every SafePrompt edition.
+This repository is the **Community edition engine**, written in Rust — the same detection core used across every SafePrompt edition. It's licensed under Apache 2.0: use it, modify it, self-host it, or build on it, commercially or not — see [License](#license) below.
 
 ---
 
@@ -73,7 +75,11 @@ Need centralized policy management across a fleet, SIEM/syslog export, advanced 
 
 ## License
 
-© SG2 Technologies. All rights reserved.
+Copyright © 2026 SG2 Technologies.
+
+Licensed under the [Apache License, Version 2.0](LICENSE). You may use, modify, and redistribute this code — including commercially — under the terms of that license.
+
+This applies to the **Community edition engine in this repository only**. SafePrompt Enterprise (fleet management, SSO/RBAC, SIEM integration, compliance reporting, and related enterprise tooling) is separate, proprietary software licensed by SG2 Technologies — see [Enterprise edition](#enterprise-edition) above.
 
 ## Author
 
