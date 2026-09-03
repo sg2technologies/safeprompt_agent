@@ -1,6 +1,8 @@
 /**
  * Prints the extension ID derived from key.pem. Requires gen-key.mjs to
- * have been run first (it already has -- key.pem exists in this repo).
+ * have been run first -- key.pem isn't part of this repository (it's a
+ * private signing key each build generates for itself), so run
+ * `node gen-key.mjs` before this if key.pem doesn't exist yet.
  *
  * Run:  node scripts/get-extension-id.mjs
  */

@@ -21,9 +21,9 @@
 #   3. node scripts\gen-update-manifest.mjs <https://your-host/safeprompt-extension.crx>
 #
 # Then host the resulting .crx and update_manifest.xml on any HTTPS server
-# you control, and point ExtensionInstallForcelist at that
-# update_manifest.xml URL (see enterprise/gpo_windows_sample.reg and
-# enterprise/intune_chrome_policy.json).
+# you control, and point Chrome's own ExtensionInstallForcelist policy
+# (via GPO or an MDM like Intune -- see Chrome's own enterprise policy
+# documentation for the exact syntax) at that update_manifest.xml URL.
 
 param(
     [string]$ChromePath

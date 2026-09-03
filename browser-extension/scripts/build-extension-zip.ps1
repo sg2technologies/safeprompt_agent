@@ -7,10 +7,10 @@
 
 .DESCRIPTION
     This is a SEPARATE artifact from safeprompt-extension.crx
-    (scripts/pack-crx.ps1). The .crx is signed and is what the MSI installs
-    for the existing self-hosted enterprise force-install path (update
-    manifest + ExtensionInstallForcelist -- see enterprise/). The .zip this
-    script produces is the plain, unsigned distributable a person loads via
+    (scripts/pack-crx.ps1). The .crx is signed and is what a self-hosted
+    force-install path uses (update manifest + Chrome's own
+    ExtensionInstallForcelist policy). The .zip this script produces is
+    the plain, unsigned distributable a person loads via
     chrome://extensions "Load unpacked" (after extracting) or side-loads,
     matching the "here's a zip per browser family" pattern used by e.g.
     novincode/dlman's release pipeline. Both artifacts are built from the
@@ -42,10 +42,10 @@
     own QA pass, that's separate work.
 
     Self-hosted Firefox distribution (outside addons.mozilla.org) still
-    needs either AMO signing or an enterprise policies.json
-    ExtensionSettings force-install entry, same shape as the existing Chrome
-    ExtensionInstallForcelist under enterprise/ -- this script only produces
-    the .zip, it doesn't attempt either of those.
+    needs either AMO signing or a policies.json ExtensionSettings
+    force-install entry, same shape as Chrome's own ExtensionInstallForcelist
+    policy -- this script only produces the .zip, it doesn't attempt
+    either of those.
 
 .PARAMETER Browser
     "chrome" (default) or "firefox".

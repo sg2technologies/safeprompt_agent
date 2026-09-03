@@ -49,5 +49,6 @@ console.log(`Version:      ${version}`);
 console.log(`Codebase URL: ${crxUrl}`);
 console.log('\nHost both update_manifest.xml and the .crx at these URLs, then set');
 console.log(`ExtensionInstallForcelist to:  ${extensionId};<https-url-to-this-update_manifest.xml>`);
-console.log('\nThis ID must also match SAFEPROMPT_EXTENSION_ORIGINS on the agent');
-console.log(`(default is already this ID -- see agent/apps/service/src/main.rs).`);
+console.log('\nThis ID must also match the Agent\'s SAFEPROMPT_EXTENSION_ORIGINS env var --');
+console.log('a freshly generated key.pem produces a different ID than the Agent\'s built-in');
+console.log('default, so set that env var to this exact ID (see README.md).');
