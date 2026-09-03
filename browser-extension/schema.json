@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "id": "SafePromptManagedConfig",
+  "description": "SafePrompt enterprise configuration -- set via Chrome/Edge managed storage (GPO, Intune). Bundled in the extension package and referenced by manifest.json's storage.managed_schema so chrome.storage.managed actually has a schema to validate against; without this file, chrome.storage.managed.get() silently returns nothing at all, regardless of what an admin pushes.",
+  "properties": {
+    "agentMode": {
+      "type": "string",
+      "enum": ["local", "central"],
+      "description": "AGENT-COMM-001 (2026-08-10): which of SafePrompt's two real Agent deployment modes this workstation uses. 'local' (the default when unset, Community/Professional): this device runs its own Agent, the extension talks to it at agentEndpoint's default (this device's own 127.0.0.1:8847) -- sensitive content never leaves the workstation. 'central' (Business/Enterprise): every workstation's extension in the tenant is pointed at ONE shared Agent elsewhere on the customer's own network (agentEndpoint below) -- prompt content crosses the customer's LAN to reach it, but never reaches SafePrompt SaaS either way (the SaaS is Control Plane only: license/users/devices/policy/updates/fleet/audit metadata, never prompt traffic). Setting agentMode to 'central' without also setting agentEndpoint is a misconfiguration -- there'd be nothing to route to but this device's own (nonexistent, in a central deployment) local Agent.",
+      "example": "central"
+    },
+    "agentEndpoint": {
+      "type": "string",
+      "description": "Renamed from localApiBase (2026-08-10) -- the extension doesn't need to know or care whether its Agent is local or central, just where to reach it. Base URL the extension talks to for scanning/heartbeat/policy. Default (unset, agentMode='local'): http://127.0.0.1:8847 -- this device's own Agent. Set this (with agentMode='central') to point every workstation's extension at one shared Agent elsewhere on the customer's network instead -- e.g. https://safeprompt-agent.company.local:8847. NOT the same thing as agent/crates/spoc (that's a separate fleet-checkin/policy relay, no scanning routes) -- this points at an ordinary Agent install's local_api, just bound to a network-reachable address instead of 127.0.0.1 (SAFEPROMPT_LOCAL_API_BIND_ADDR) and given a real shared secret (SAFEPROMPT_LOCAL_API_SHARED_SECRET, see agentSharedSecret below) rather than relying on the Origin-header check alone, which only stops browser-context callers, not a general network attacker. IMPORTANT: setting this to anything other than 127.0.0.1 also requires adding the same host to runtime_allowed_hosts in this same managed policy (see browser-extension/enterprise/intune_central_agent_policy.json for a worked example) -- manifest.json's static host_permissions only covers 127.0.0.1, so Chrome/Edge will otherwise silently block the extension's fetch to a central Agent regardless of what's configured here.",
+      "example": "https://safeprompt-agent.company.local:8847"
+    },
+    "agentSharedSecret": {
+      "type": "string",
+      "description": "Renamed from localApiSharedSecret (2026-08-10). Sent as part of every signed request to agentEndpoint (see agent/crates/local_api's compute_signature/verify_signed_request -- HMAC-SHA256 over a timestamp+nonce, not sent in cleartext). Required once the target Agent has a shared secret configured -- which, as of 2026-08-31, is now the default for an ordinary per-device LOCAL install too, not just CENTRAL: apps/service auto-provisions one on first run and the Windows installer (Install-ExtensionSharedSecret.ps1) writes it here itself, since the Origin-header check alone only stops a browser page, not a second local process on the same machine. A hand-pushed GPO/Intune value here (e.g. for a CENTRAL deployment) still simply overrides whatever the installer set.",
+      "example": "a-long-random-shared-secret-the-tenant-admin-generated"
+    }
+  }
+}

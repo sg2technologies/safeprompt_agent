@@ -1,0 +1,96 @@
+{
+  "manifest_version": 3,
+  "name": "SafePrompt — AI Security Gateway",
+  "version": "1.0.0",
+  "description": "Inspects and protects every prompt and AI response in your browser -- secrets, PII, and prompt injection -- before anything leaves the page. Not just DLP: full AI Security Gateway coverage for ChatGPT, Claude, Gemini, Perplexity, and Grok.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "safeprompt-extension@safeprompt.pro",
+      "strict_min_version": "128.0"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "SafePrompt — AI Security Gateway",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "scripts": ["src/background.js"]
+  },
+  "permissions": ["alarms", "scripting", "storage"],
+  "storage": {
+    "managed_schema": "schema.json"
+  },
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "https://chatgpt.com/*",
+    "https://*.chatgpt.com/*",
+    "https://openai.com/*",
+    "https://*.openai.com/*",
+    "https://claude.ai/*",
+    "https://*.claude.ai/*",
+    "https://anthropic.com/*",
+    "https://*.anthropic.com/*",
+    "https://gemini.google.com/*",
+    "https://perplexity.ai/*",
+    "https://*.perplexity.ai/*",
+    "https://grok.com/*",
+    "https://*.grok.com/*",
+    "https://x.ai/*",
+    "https://*.x.ai/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://*.chatgpt.com/*",
+        "https://openai.com/*",
+        "https://*.openai.com/*",
+        "https://claude.ai/*",
+        "https://*.claude.ai/*",
+        "https://anthropic.com/*",
+        "https://*.anthropic.com/*",
+        "https://gemini.google.com/*",
+        "https://perplexity.ai/*",
+        "https://*.perplexity.ai/*",
+        "https://grok.com/*",
+        "https://*.grok.com/*",
+        "https://x.ai/*",
+        "https://*.x.ai/*"
+      ],
+      "js": ["src/main-world-interceptor.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://*.chatgpt.com/*",
+        "https://openai.com/*",
+        "https://*.openai.com/*",
+        "https://claude.ai/*",
+        "https://*.claude.ai/*",
+        "https://anthropic.com/*",
+        "https://*.anthropic.com/*",
+        "https://gemini.google.com/*",
+        "https://perplexity.ai/*",
+        "https://*.perplexity.ai/*",
+        "https://grok.com/*",
+        "https://*.grok.com/*",
+        "https://x.ai/*",
+        "https://*.x.ai/*"
+      ],
+      "js": ["src/bridge-content-script.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

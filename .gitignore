@@ -29,3 +29,20 @@ __pycache__/
 *.pyc
 scripts/build/
 scripts/dist/
+
+# browser-extension/ build/signing artifacts -- key.pem is the CRX-signing
+# PRIVATE key (never committed anywhere, verified against full git history
+# before this export). A community build should generate its own with
+# gen-key.mjs rather than ever expect SG2's production key -- see
+# browser-extension/scripts/pack-crx.ps1's own doc comment on this exact
+# point. *.crx/update_manifest.xml/dist-unpacked/ are that key's build
+# output, same "regenerable, not source" reasoning as target/ above.
+browser-extension/key.pem
+browser-extension/*.crx
+browser-extension/update_manifest.xml
+browser-extension/dist-unpacked/
+browser-extension/*.zip
+# Enterprise-only deployment tooling (GPO/Intune templates for
+# Business/Enterprise's CENTRAL Agent mode) -- deliberately excluded from
+# this Community export, same boundary as agent-enterprise/ itself.
+browser-extension/enterprise/

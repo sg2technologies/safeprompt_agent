@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>SafePrompt</title>
+<style>
+  :root {
+    --bg: #0d1126;
+    --surface: rgba(255, 255, 255, 0.04);
+    --border: rgba(255, 255, 255, 0.09);
+    --text: #f3f4f6;
+    --text-dim: #a3aed0;
+    --accent: #7c3aed;
+    --accent-soft: rgba(124, 58, 237, 0.16);
+    --go: #10b981;
+    --go-soft: rgba(16, 185, 129, 0.14);
+    --stop: #ef4444;
+    --stop-soft: rgba(239, 68, 68, 0.14);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    width: 300px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+    font-size: 13px;
+  }
+  .head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 16px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .mark {
+    width: 30px; height: 30px; border-radius: 8px; flex: none;
+    background: linear-gradient(135deg, var(--accent), #4f46e5);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 15px; color: #fff;
+  }
+  .brand { line-height: 1.3; }
+  .brand .name { font-weight: 700; font-size: 14px; letter-spacing: -0.01em; }
+  .brand .tag {
+    font-size: 10px; color: var(--text-dim); text-transform: uppercase;
+    letter-spacing: .06em; font-weight: 600;
+  }
+
+  .body { padding: 14px 16px 16px; display: grid; gap: 12px; }
+
+  .row {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px;
+  }
+  .row .label { color: var(--text-dim); font-size: 11.5px; }
+
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; margin-right: 6px; }
+  .dot.on { background: var(--go); box-shadow: 0 0 0 3px var(--go-soft); }
+  .dot.off { background: var(--stop); box-shadow: 0 0 0 3px var(--stop-soft); }
+  .dot.pending { background: var(--text-dim); }
+
+  .status-text { display: flex; align-items: center; font-weight: 600; font-size: 12.5px; }
+
+  .plan-pill {
+    font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 100px;
+    background: var(--accent-soft); color: #c4b5fd; letter-spacing: .01em;
+  }
+
+  .empty-state {
+    font-size: 12px; color: var(--text-dim); line-height: 1.6;
+  }
+  .empty-state a { color: #c4b5fd; }
+
+  .sites {
+    font-size: 11px; color: var(--text-dim); line-height: 1.7;
+    padding-top: 2px; border-top: 1px solid var(--border);
+  }
+  .sites b { color: var(--text); font-weight: 600; }
+
+  .upsell {
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+    background: var(--accent-soft); font-size: 11px; color: var(--text-dim); line-height: 1.6;
+  }
+  .upsell b { color: #d6ccff; font-weight: 700; }
+  .upsell a { color: #c4b5fd; text-decoration: none; }
+
+  footer {
+    border-top: 1px solid var(--border); padding: 10px 16px 12px;
+    font-size: 10px; color: var(--text-dim); text-align: center; line-height: 1.7;
+  }
+  footer a { color: #a3aed0; text-decoration: none; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div class="mark">S</div>
+    <div class="brand">
+      <div class="name">SafePrompt</div>
+      <div class="tag">AI Security Gateway</div>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="row">
+      <span class="label">Agent</span>
+      <span id="agent-status" class="status-text"><span class="dot pending" id="agent-dot"></span>Checking…</span>
+    </div>
+
+    <div class="row" id="plan-row" style="display:none;">
+      <span class="label">Plan</span>
+      <span id="plan-pill" class="plan-pill">—</span>
+    </div>
+
+    <div id="offline-help" class="empty-state" style="display:none;">
+      No SafePrompt Agent found on this device. Install it from your SafePrompt
+      dashboard under <b>Setup &amp; Deployment</b>, then reopen this popup.
+    </div>
+
+    <div class="sites">
+      Watching <b>ChatGPT</b>, <b>Claude</b>, <b>Gemini</b>, <b>Perplexity</b> &amp; <b>Grok</b> for secrets, PII, and prompt injection.
+    </div>
+
+    <a id="console-link" href="#" target="_blank" rel="noopener"
+       style="display:none; font-size:11.5px; color:#c4b5fd; text-decoration:none;">
+      Open SafePrompt console — status, policy &amp; history →
+    </a>
+
+    <div id="upsell" class="upsell" style="display:none;">
+      <b>Business &amp; Enterprise</b> add outbound AI-response scanning, agentic-risk
+      detection, central policy &amp; fleet management, cloud audit sync and SIEM
+      export. <a href="https://sg2technologies.com" target="_blank" rel="noopener">Talk to sales →</a>
+    </div>
+  </div>
+
+  <footer>
+    A product of <a href="https://sg2technologies.com" target="_blank" rel="noopener">SG2 Technologies</a><br>
+    <a href="mailto:info@sg2technologies.com">info@sg2technologies.com</a>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>
