@@ -1,0 +1,18 @@
+# Code owners for this repository.
+#
+# Paired with a branch protection rule / ruleset on `main` that requires
+# review from a code owner before merging (Settings -> Branches, or the
+# newer Settings -> Rules -> Rulesets) -- without that setting enabled,
+# this file alone doesn't block anything, it only decides who GitHub
+# requests as a reviewer.
+#
+# Everything defaults to the same owner; CI/release-pipeline and licensing
+# files get called out explicitly since a change there has a much bigger
+# blast radius (e.g. altering what a signed release actually ships) than
+# an ordinary source change.
+
+* @ngopi37
+
+/.github/                  @ngopi37
+/LICENSE                   @ngopi37
+/README.md                 @ngopi37
