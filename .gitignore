@@ -18,3 +18,14 @@ vendor/
 .env.*
 !.env.example
 .vscode/
+
+# PyInstaller build output for scripts/presidio_scanner.py -- found
+# 2026-09-03 already committed (including the ~90MB frozen
+# presidio-scanner.exe itself) before this rule existed. build.ps1
+# expects the frozen exe to already exist locally (see its own error
+# message for the exact freeze command) -- it's a build artifact
+# operators produce themselves, never something this repo ships as source.
+__pycache__/
+*.pyc
+scripts/build/
+scripts/dist/
