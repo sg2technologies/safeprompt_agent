@@ -96,8 +96,8 @@ pub struct LicenseClaims {
     /// (same decision as `seat_id`). Populated once a real identity
     /// mechanism exists behind it (Professional: login; Business: Entra
     /// ID/AD/email invitation) -- deliberately not built by this field's
-    /// addition alone, see task.md's reconciled P0 list. `None` for
-    /// Community's anonymous model and every pre-existing license.
+    /// addition alone. `None` for Community's anonymous model and every
+    /// pre-existing license.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
     /// This *seat's* device cap (e.g. "up to 5 devices" per person),
@@ -117,9 +117,9 @@ pub struct LicenseClaims {
     /// backward-compatibility posture as every other optional field above.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub issued_at: Option<DateTime<Utc>>,
-    /// Real, offline-verifiable revocation mechanism (task.md's "license
-    /// revocation... does nothing for a device that never checks in again"
-    /// gap, closed 2026-08-08): if set, this license stops verifying once
+    /// Real, offline-verifiable revocation mechanism, closed 2026-08-08 --
+    /// without it, revocation does nothing for a device that never checks
+    /// in again. If set, this license stops verifying once
     /// `issued_at + max_offline_days` has passed, independent of `expiry`.
     /// A device that keeps checking in gets `issued_at` refreshed on every
     /// reissue (see `_sync_license_with_cloud`), so this is invisible to a
@@ -137,8 +137,8 @@ pub struct LicenseClaims {
     /// own schedule regardless of what the customer actually paid for.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_offline_days: Option<u32>,
-    /// Grace period (task.md's other flagged gap, closed alongside the
-    /// above): the number of days *past* `expiry` this license keeps
+    /// Grace period, closed alongside the above: the number of days *past*
+    /// `expiry` this license keeps
     /// verifying successfully, so a delayed renewal/payment or a brief
     /// offline stretch spanning the exact expiry moment doesn't cut off a
     /// paying customer's features at the stroke of midnight with zero

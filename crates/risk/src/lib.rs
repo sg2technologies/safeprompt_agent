@@ -5,10 +5,10 @@
 //! outranks any number of weaker ones, and nothing outside `Finding` itself
 //! (which application a prompt is headed to, whose device/account it came
 //! from, how many prior violations they have) has any say in the outcome.
-//! `task.md`'s own Phase 2 design note is explicit that this crate's job is
-//! to *feed* that decision, not replace it yet: "Needs numeric scoring (PII
-//! score + injection score + compliance score -> overall risk) feeding the
-//! action decision, not replacing it." Composing conditional rules on top of
+//! This crate's job is to *feed* that decision (numeric scoring -- PII
+//! score + injection score + compliance score -> overall risk -- feeding
+//! the action decision) rather than replace it yet. Composing conditional
+//! rules on top of
 //! a score (`IF secret_detected AND ai_site = public_llm THEN mask`) is
 //! SP-RISK-002; swapping `PolicyEngine::evaluate` itself over to consume
 //! that output is SP-RISK-003. This crate deliberately stops at "produce a

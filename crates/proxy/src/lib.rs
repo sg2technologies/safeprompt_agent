@@ -194,7 +194,7 @@ async fn persist_event(state: &AppState, event_type: &str, domain: &str, scan: &
         timestamp: Utc::now(),
         event_type: event_type.to_string(),
         action_taken: scan.action.clone(),
-        app_name: "unknown".to_string(), // process attribution not implemented yet — see task.md "Application Discovery"
+        app_name: "unknown".to_string(), // process attribution not implemented yet
         domain: domain.to_string(),
         user_identity: "unknown".to_string(), // Identity/RBAC not implemented yet
         findings: scan.findings.clone(),

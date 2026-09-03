@@ -160,14 +160,14 @@ chrome.runtime.onInstalled.addListener(() => {
 //
 // This can only ever cover a domain the extension actually has host
 // permission for. For an enterprise-managed install that's silent -- IT
-// pushes the domain into `runtime_allowed_hosts` via GPO/Intune (see
-// browser-extension/enterprise/), which grants permission regardless of
-// what's in this manifest. Everyone else (BYOD/Community, no MDM) simply
-// doesn't get custom domains covered yet: `chrome.permissions.contains`
-// below comes back false, syncOneDomain quietly skips it, and nothing
-// breaks. Self-service "add my own site" needs a popup UI + a user gesture
-// (chrome.permissions.request can't run headless) -- not built yet, see
-// task.md.
+// pushes the domain into `runtime_allowed_hosts` via a GPO/Intune policy
+// (Business/Enterprise deployment tooling, not part of this repository),
+// which grants permission regardless of what's in this manifest. Everyone
+// else (BYOD/Community, no MDM) simply doesn't get custom domains covered
+// yet: `chrome.permissions.contains` below comes back false, syncOneDomain
+// quietly skips it, and nothing breaks. Self-service "add my own site"
+// needs a popup UI + a user gesture (chrome.permissions.request can't run
+// headless) -- not built yet.
 const SITE_SYNC_ALARM = "safeprompt-site-sync";
 const SITE_SYNC_PERIOD_MINUTES = 15;
 const DYNAMIC_SCRIPT_ID_PREFIX = "safeprompt-dynamic-";

@@ -30,9 +30,8 @@
 //! Still out of scope here, same as `safeprompt-risk`: nothing outside this
 //! crate consumes a `RuleEngine` yet beyond the thin pass-through wired into
 //! `safeprompt-inspector` (`Inspector::evaluate_rules`/`with_rules`) — there
-//! is no policy-document schema for authoring rules centrally yet (that's
-//! `task.md`'s still-unstarted "Policy Language" item, which needs this
-//! crate to exist first), and `PolicyEngine::evaluate` itself is untouched.
+//! is no policy-document schema for authoring rules centrally yet, and
+//! `PolicyEngine::evaluate` itself is untouched.
 //! Swapping the actual Allow/Warn/Redact/Block decision over to consult
 //! rules (and the risk score) is SP-RISK-003.
 

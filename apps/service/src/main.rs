@@ -322,10 +322,9 @@ async fn main() -> anyhow::Result<()> {
     // edition including Community could stand up a SPOC).
     init_spoc(fleet_management_enabled);
 
-    // Audit Relay (Reconciled-P0 item #4, 2026-08-07): the agent -> SPOC ->
-    // cloud upward hop for locally-persisted DlpEvents -- the last
-    // remaining commercial-launch P0 blocker per task.md (real DLP audit
-    // *search* in the Tenant Portal has had nothing to query without this).
+    // Audit Relay (2026-08-07): the agent -> SPOC -> cloud upward hop for
+    // locally-persisted DlpEvents -- real DLP audit *search* in the Tenant
+    // Portal has had nothing to query without this.
     // Cloned `storage` (an `Arc`, cheap) rather than moved -- `ProxyConfig`
     // below still needs its own reference to the same database.
     init_audit_relay(fleet_management_enabled, storage.clone(), tenant_id.clone(), signed_license_for_audit_relay);
@@ -859,8 +858,7 @@ fn init_policy_sync(_inspector: &Arc<Inspector>, _tenant: &str) -> bool {
 /// to enable here).
 fn init_spoc(_fleet_management_enabled: bool) {}
 
-/// Starts the Audit Relay background loop (Reconciled-P0 item #4,
-/// 2026-08-07, see task.md's enterprise-architecture-backlog #9) if a live
+/// Starts the Audit Relay background loop (2026-08-07) if a live
 /// Audit Pipeline database exists (`storage.is_some()` -- gated on the
 /// `siem` feature one level up, same as local persistence itself: there is
 /// nothing to relay without it), a valid license was loaded (the batch's

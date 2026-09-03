@@ -440,11 +440,9 @@ impl PolicyEngine {
 // ── Compliance packs ────────────────────────────────────────────────────────
 
 /// Versioned, named `PolicyConfig` presets tuned for a specific compliance
-/// regime — closes `task.md`'s "Compliance Packs ⏳ Not started" row. That
-/// row said this "depends on Rule Engine + Policy Language existing first";
-/// the Rule Engine (`safeprompt-rules`) shipped 2026-08-10, and a full
-/// Policy Language DSL turns out not to be a prerequisite at all — a pack
-/// is just a Rust factory function producing an ordinary `PolicyConfig`,
+/// regime. A full Policy Language DSL turns out not to be a prerequisite
+/// for this at all — a pack is just a Rust factory function producing an
+/// ordinary `PolicyConfig`,
 /// the same type every other policy already is. User picked PCI-DSS as the
 /// first pack to build (2026-08-12), narrowest and most concrete since
 /// checksum-validated card-number detection (`FindingCategory::Financial`)

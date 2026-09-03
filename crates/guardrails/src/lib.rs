@@ -1,7 +1,6 @@
-//! Output-side content-safety guardrails — closes the gap flagged in the
-//! 2026-08-12 Agent-tier reconciliation: no toxicity/topic-restriction
-//! guardrail existed anywhere in this codebase despite the product's "AI
-//! Firewall + Guardrails, not just DLP" positioning (`task.md`).
+//! Output-side content-safety guardrails — closes a real gap found
+//! 2026-08-12: no toxicity/topic-restriction guardrail existed anywhere in
+//! this codebase.
 //!
 //! **Topic restriction is deliberately NOT built here.** That capability
 //! already exists — `safeprompt-policy::CustomKeywordRule` is exactly a
