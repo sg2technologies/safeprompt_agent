@@ -1,0 +1,11 @@
+[package]
+name = "safeprompt-mcp-api"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Open-core Phase 2 (2026-08-27) split of safeprompt-mcp: the McpToolCall/McpAction/McpDecision/ToolPolicyConfig data shapes -- matched/constructed directly in agent/crates/proxy's live /mcp handler and agent/crates/config's hot-reload loop -- plus the McpToolFirewall trait those crates hold instead of the concrete McpFirewall engine. The real allow/deny-list evaluation, argument validation, and call-rate-limiting logic (private, MCP firewall is fully gated behind the mcp license feature) lives in agent-enterprise/crates/mcp instead."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true

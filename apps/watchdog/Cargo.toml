@@ -1,0 +1,93 @@
+[package]
+name = "safeprompt-watchdog"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "SafePrompt Agent watchdog: supervises the Agent service, verifies its integrity before each start, and applies signed updates."
+
+[[bin]]
+name = "safeprompt-watchdog"
+path = "src/main.rs"
+
+[dependencies]
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+safeprompt-updater = { path = "../../crates/updater" }
+safeprompt-integrity = { path = "../../crates/integrity" }
+hex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+# Only for control_plane_update_endpoint's Url::parse/query-string building
+# (SP-UPD-006) -- same crate+feature set apps/service already depends on
+# for its own control_plane_endpoint, safeprompt-updater already pulls
+# reqwest in transitively for the HTTP client itself, so this adds no new
+# transitive dependency, just a direct one for the URL type.
+reqwest.workspace = true
+
+# Real Windows Service Control Manager integration (install/uninstall/run as
+# an actual service) — see productization priority #2: the watchdog was a
+# console-only binary until now, not something SCM could start/stop/restart
+# on boot. Windows-only: there's nothing to gate here on other platforms
+# since systemd/launchd integration is separate, not-yet-built work.
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.7"
+
+# Debian packaging (`cargo deb`, run from this directory) -- the .deb ships
+# both binaries (the watchdog and the service it supervises, same
+# same-directory-sibling layout `resolve_service_path()` already assumes on
+# every platform) plus the systemd unit. Custom postinst/postrm (debian/)
+# create the least-privilege `safeprompt` system user before the unit
+# starts -- systemd's own `User=`/`Group=`/`StateDirectory=` in the unit
+# file need that account to already exist.
+[package.metadata.deb]
+name = "safeprompt-agent"
+maintainer = "SafePrompt Security Team <security@safeprompt.pro>"
+copyright = "2026, SafePrompt Security Team"
+extended-description = """\
+SafePrompt Agent: endpoint DLP for AI providers -- prompt/response \
+scanning, MCP tool-call firewall, and policy enforcement for local AI \
+API traffic."""
+depends = "$auto"
+section = "utils"
+priority = "optional"
+maintainer-scripts = "debian/"
+assets = [
+    ["target/release/safeprompt-watchdog", "usr/lib/safeprompt/safeprompt-watchdog", "755"],
+    ["target/release/safeprompt-service", "usr/lib/safeprompt/safeprompt-service", "755"],
+    ["../../systemd/safeprompt-watchdog.service", "lib/systemd/system/safeprompt-watchdog.service", "644"],
+]
+
+# RPM packaging (`cargo generate-rpm`, run from this directory after `cargo
+# build --release`) -- same assets and the same least-privilege-user
+# reasoning as the .deb above, via RPM's %post/%preun scriptlets instead of
+# Debian maintainer scripts (RPM has no separate script-file convention the
+# way dpkg does, so these are inlined here rather than in a matching
+# `debian/`-style directory).
+# Asset paths are relative to this crate's own directory (unlike cargo-deb,
+# which resolves `target/...` against the workspace root automatically) --
+# `../../target/...` reaches the shared workspace target dir every crate
+# here actually builds into.
+[package.metadata.generate-rpm]
+name = "safeprompt-agent"
+assets = [
+    { source = "../../target/release/safeprompt-watchdog", dest = "/usr/lib/safeprompt/safeprompt-watchdog", mode = "755" },
+    { source = "../../target/release/safeprompt-service", dest = "/usr/lib/safeprompt/safeprompt-service", mode = "755" },
+    { source = "../../systemd/safeprompt-watchdog.service", dest = "/usr/lib/systemd/system/safeprompt-watchdog.service", mode = "644" },
+]
+
+[package.metadata.generate-rpm.scriptlets]
+post = """
+getent group safeprompt >/dev/null || groupadd --system safeprompt
+getent passwd safeprompt >/dev/null || useradd --system --gid safeprompt --no-create-home --shell /sbin/nologin safeprompt
+systemctl daemon-reload || true
+systemctl enable safeprompt-watchdog.service || true
+systemctl start safeprompt-watchdog.service || true
+"""
+preun = """
+systemctl stop safeprompt-watchdog.service || true
+systemctl disable safeprompt-watchdog.service || true
+"""

@@ -1,0 +1,53 @@
+[package]
+name = "safeprompt-ocr"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Local, on-device OCR (2026-08-07) -- screenshots/images/scanned-PDF pages become another text source for the existing DLP scanners, matching this product's 'nothing leaves the device' boundary. Wraps oar-ocr (PP-OCR ONNX models via the ort ONNX Runtime bindings) behind a pluggable OcrEngine trait so the backend can be swapped later without touching callers."
+# 2026-08-27, open-core Phase 2: unlike mcp/siem/llm_verify/providers, this
+# crate stays here UNSPLIT, fully public, in both binaries. `license_features::OCR`
+# (agent/crates/licensing) was deliberately reopened to Community+ on
+# 2026-08-11 -- "explicit user decision to make OCR/image scanning universal
+# from Community upward" -- predating the open-core table's private-column
+# "Advanced OCR" entry, which refers to unbuilt future work (better models,
+# multi-language, layout-aware extraction), not this crate. Confirmed with
+# the user mid-refactor rather than assumed.
+
+[dependencies]
+safeprompt-common = { path = "../common" }
+anyhow.workspace = true
+tracing.workspace = true
+# Pinned exactly, not "0.9" -- same reasoning as the anydoc integration:
+# verify and re-pin deliberately on updates, don't auto-track.
+#
+# `default-features = false` deliberately drops oar-ocr's own default
+# "download-binaries" feature (which statically links a prebuilt ONNX
+# Runtime .lib at *build* time). Verified live on 2026-08-07: that prebuilt
+# binary is built against a newer MSVC STL than ships with the locally
+# installed VS 2022 17.12 toolset, producing real LNK2001/LNK2019
+# "unresolved external symbol __std_search_1" (etc.) errors linking any
+# test/exe target -- a known, upstream-acknowledged issue (pykeio/ort#407,
+# closed "not planned"), not something wrong in this crate's own code.
+# "load-dynamic" (below, forced via the direct `ort` dependency for Cargo
+# feature unification -- oar-ocr doesn't expose a passthrough feature for
+# it) sidesteps the whole class of problem: no ONNX Runtime object code is
+# linked at build time at all, only a thin FFI shim; the real
+# onnxruntime.dll/.so/.dylib is resolved and loaded at *runtime* instead,
+# via `ort::init_from` (see `resolve_and_init_dylib` below) or the
+# `ORT_DYLIB_PATH` env var. This also happens to be the right shape for
+# production anyway: the installer ships one known-good ONNX Runtime
+# binary once, rather than baking a version-locked static copy into every
+# Agent build.
+oar-ocr = { version = "=0.9.1", default-features = false, features = ["auto-download"] }
+# Must match oar-ocr's own pinned `ort` version exactly (see Cargo.lock)
+# for Cargo's feature unification to apply "load-dynamic" to the single
+# resolved `ort`/`ort-sys` used by both crates.
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dynamic"] }
+image = "0.25"
+
+[dev-dependencies]
+# Only used to render real text onto a real bitmap for the opt-in live OCR
+# test (SAFEPROMPT_TEST_OCR_LIVE=1) -- not a runtime dependency of the
+# actual OCR engine.
+imageproc = "0.25"
+ab_glyph = "0.2"

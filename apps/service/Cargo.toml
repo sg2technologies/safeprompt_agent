@@ -1,0 +1,43 @@
+[package]
+name = "safeprompt-service"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+# 2026-08-14, open-core Phase 5: this is now a genuinely separate, minimal
+# Community binary -- the real, full-featured `safeprompt-service` that
+# actually ships moved to `agent-enterprise/apps/service` (see that
+# workspace's own Cargo.toml doc comment, and installer/build.ps1's
+# identical comment for why the build script now builds from there
+# instead of here). This crate has zero dependency on `agent-enterprise`
+# or any of its five crates (fleet/spoc/policy_sync/audit_relay/scanner) --
+# no `optional = true` path deps, no `enterprise` Cargo feature, nothing
+# for a public clone to trip over. `cargo check -p safeprompt-service`
+# from this directory succeeds with `agent-enterprise/` entirely absent
+# (empirically confirmed the same way Phase 1 was: temporarily renamed the
+# sibling directory away and re-ran the check).
+[dependencies]
+safeprompt-common = { path = "../../crates/common" }
+safeprompt-inspector = { path = "../../crates/inspector" }
+safeprompt-proxy = { path = "../../crates/proxy" }
+safeprompt-policy = { path = "../../crates/policy" }
+safeprompt-telemetry = { path = "../../crates/telemetry" }
+safeprompt-licensing = { path = "../../crates/licensing" }
+safeprompt-integrity = { path = "../../crates/integrity" }
+safeprompt-connect-proxy = { path = "../../crates/connect_proxy" }
+safeprompt-local-api = { path = "../../crates/local_api" }
+safeprompt-providers-api = { path = "../../crates/providers_api" }
+safeprompt-storage = { path = "../../crates/storage" }
+safeprompt-metrics = { path = "../../crates/metrics" }
+safeprompt-mcp-api = { path = "../../crates/mcp_api" }
+safeprompt-config = { path = "../../crates/config" }
+safeprompt-ocr = { path = "../../crates/ocr" }
+reqwest.workspace = true
+chrono.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+rand_core.workspace = true

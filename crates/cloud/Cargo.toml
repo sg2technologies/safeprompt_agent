@@ -1,0 +1,9 @@
+[package]
+name = "safeprompt-cloud"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+safeprompt-common = { path = "../common" }
+serde.workspace = true

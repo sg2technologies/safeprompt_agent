@@ -1,0 +1,122 @@
+[workspace]
+resolver = "2"
+
+# 2026-08-14, open-core Phase 1.5/5: `fleet`, `spoc`, `policy_sync`,
+# `audit_relay`, `scanner` moved OUT of this workspace into the sibling
+# `../agent-enterprise` workspace -- see that workspace's own Cargo.toml
+# doc comment for the full reasoning (a workspace member's directory has
+# to physically exist for `cargo` to resolve at all, independent of any
+# `optional`/feature-flag gating -- confirmed empirically, not assumed).
+# This workspace (`agent/`) is the open-core split's PUBLIC candidate --
+# everything listed below is meant to be genuinely publishable,
+# buildable-from-source, and auditable.
+#
+# `apps/service` here is now a genuinely separate, minimal Community
+# binary (Phase 5) -- it has zero dependency on `agent-enterprise` or any
+# of the five crates above, and can be built with this directory
+# (`agent/`) checked out completely alone, `agent-enterprise/` absent
+# entirely (proved the same way Phase 1 was: `cargo check -p
+# safeprompt-service` succeeds with that sibling directory renamed away).
+# The REAL, full-featured, actually-shipped `safeprompt-service` binary
+# lives at `agent-enterprise/apps/service` instead -- see
+# `installer/build.ps1`'s own comment on why it now builds from there, not
+# here.
+#
+# 2026-08-27, open-core Phase 2: mcp/siem/llm-verify/providers are now
+# trait-extracted -- each split into a small public "*_api" crate here
+# (trait definitions + data shapes inspector/proxy/local_api/config depend
+# on) plus the real implementation in `agent-enterprise/crates/*`. `ocr`
+# stays here UNSPLIT and fully public/Community+ -- see `crates/ocr`'s own
+# Cargo.toml doc comment for why: it was deliberately reopened to Community+
+# on 2026-08-11, predating this split, and there's no "advanced OCR" tier
+# built yet to separate out. Phase 3 (splitting `attack_advanced`/
+# `attack_agentic` out of `crates/prompt`) is the remaining piece.
+members = [
+    "crates/common",
+    "crates/pii",
+    "crates/secrets",
+    "crates/prompt",
+    "crates/response",
+    "crates/policy",
+    "crates/risk",
+    "crates/rules",
+    "crates/inspector",
+    "crates/mcp_api",
+    "crates/providers_api",
+    "crates/proxy",
+    "crates/connect_proxy",
+    "crates/local_api",
+    "crates/logger",
+    "crates/storage",
+    "crates/metrics",
+    "crates/config",
+    "crates/telemetry",
+    "crates/licensing",
+    "crates/integrity",
+    "crates/cloud",
+    "crates/updater",
+    "crates/file_inspector",
+    "crates/ocr",
+    "crates/guardrails",
+    "platform/windows",
+    "platform/macos",
+    "apps/service",
+    # apps/license-tool moved to agent-enterprise/apps/license-tool (Phase 5)
+    # -- see that crate's own Cargo.toml doc comment: keeping it here as a
+    # member with a hard path dependency on agent-enterprise/crates/
+    # policy_sync broke `cargo check -p safeprompt-service` with that
+    # sibling directory absent, the same class of bug apps/service itself
+    # had.
+    "apps/watchdog",
+    "apps/tray",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["SafePrompt Security Team <security@safeprompt.pro>"]
+# No LICENSE file exists in this repo yet (closed-source product, not yet
+# formalized) -- "Proprietary" is the conventional placeholder for that,
+# and is required by cargo-generate-rpm (RPM's own License: header is
+# mandatory). Revisit if/when a real license file is added.
+license = "Proprietary"
+
+[workspace.dependencies]
+tokio = { version = "1.38", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+regex = "1.10"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+thiserror = "1.0"
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.8", features = ["v4", "serde"] }
+axum = "0.7"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+bytes = "1.7"
+futures-util = "0.3"
+http = "1.1"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+sha2 = "0.10"
+hmac = "0.12"
+base64 = "0.22"
+machine-uid = "0.5"
+hostname = "0.4"
+rand_core = { version = "0.6", features = ["getrandom"] }
+hex = "0.4"
+rcgen = "0.13"
+rustls = "0.23"
+rustls-pki-types = "1"
+tokio-rustls = "0.26"
+axum-server = { version = "0.8", features = ["tls-rustls"] }
+webpki-roots = "1"
+aes-gcm = "0.10"
+time = "0.3"
+# 2026-08-27, open-core Phase 2: `SiemForwarder`/`LlmVerifier` (safeprompt-common)
+# and `McpToolFirewall` (safeprompt-mcp-api) all need trait objects
+# (`Arc<dyn Trait>`/`Box<dyn Trait>`) with async methods -- native `async fn`
+# in traits isn't dyn-compatible without manually boxing the returned future,
+# so this crate provides that boxing via a macro, same role `Scanner`'s plain
+# sync `fn scan` didn't need. First use of this crate in the workspace.
+async-trait = "0.1"

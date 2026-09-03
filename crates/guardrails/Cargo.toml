@@ -1,0 +1,10 @@
+[package]
+name = "safeprompt-guardrails"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+safeprompt-common = { path = "../common" }
+regex.workspace = true
+serde.workspace = true

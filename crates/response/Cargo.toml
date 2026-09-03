@@ -1,0 +1,11 @@
+[package]
+name = "safeprompt-response"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+safeprompt-common = { path = "../common" }
+safeprompt-secrets = { path = "../secrets" }
+safeprompt-pii = { path = "../pii" }
+serde.workspace = true

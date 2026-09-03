@@ -1,0 +1,11 @@
+[package]
+name = "safeprompt-providers-api"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Open-core Phase 2 (2026-08-27) split of safeprompt-providers: the Provider/StreamTransformer traits, OutboundRequest/StreamingSupport shapes, the generic provider-agnostic ProviderRegistry container, and the one concrete provider every edition ships -- a generic, unbranded OpenAI-compatible translator (covers OpenAI/Grok/Perplexity/DeepSeek/Mistral/Cohere/Groq/OpenRouter/Ollama, all of which already speak OpenAI's wire format). The branded Anthropic/Azure-OpenAI/Gemini translators (real request+response reshaping, gated behind the multi_provider license feature) live in agent-enterprise/crates/providers instead, depending on this crate's trait for the seam."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true

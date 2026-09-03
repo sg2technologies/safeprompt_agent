@@ -1,0 +1,20 @@
+#!/bin/sh
+set -e
+
+# Least-privilege system account the systemd unit's User=/Group=safeprompt
+# needs to already exist before the unit can start. --system: no login
+# shell, no home directory, not a real user account.
+if ! getent group safeprompt >/dev/null; then
+    addgroup --system safeprompt
+fi
+if ! getent passwd safeprompt >/dev/null; then
+    adduser --system --ingroup safeprompt --no-create-home --shell /usr/sbin/nologin safeprompt
+fi
+
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+    systemctl enable safeprompt-watchdog.service || true
+    systemctl start safeprompt-watchdog.service || true
+fi
+
+exit 0

@@ -1,0 +1,30 @@
+[package]
+name = "safeprompt-tray"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "SafePrompt Agent tray icon: per-user process showing live protection status (a Windows Service can't show UI directly, Session 0 isolation) by polling the watchdog's status.json."
+
+[[bin]]
+name = "safeprompt-tray"
+path = "src/main.rs"
+
+[dependencies]
+# Default features pull in codecs (AV1 via rav1e/ravif, EXR, etc.) this
+# binary never uses -- it only ever decodes the one bundled PNG icon.
+# Trimming to just "png" avoids dragging that whole dependency tree (and its
+# considerable build time/disk footprint) into the tray binary.
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+serde.workspace = true
+serde_json.workspace = true
+tao = "0.36.0"
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tray-icon = "0.24.2"
+winreg = "0.52"
+# Pinned to exactly what tray-icon 0.24.2 itself resolves to (checked via
+# Cargo.lock) -- MessageBoxW's own signature doesn't care, but staying on
+# the same version this workspace already builds avoids adding a second
+# copy of the windows-sys dependency tree for one function call.
+windows-sys = { version = "=0.61.2", features = ["Win32_UI_WindowsAndMessaging"] }

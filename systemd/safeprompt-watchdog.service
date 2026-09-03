@@ -1,0 +1,37 @@
+[Unit]
+Description=SafePrompt Agent Watchdog
+Documentation=https://safeprompt.pro
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/safeprompt/safeprompt-watchdog
+# systemd supervises the watchdog; the watchdog supervises
+# safeprompt-service (spawns it, verifies its Authenticode-equivalent
+# integrity manifest before each spawn, restarts it on crash) -- same
+# two-tier model as Windows, where the Service Control Manager supervises
+# watchdog.exe and watchdog.exe supervises service.exe. Restart=on-failure
+# here is for the watchdog process itself dying, not the service it
+# supervises (that's the watchdog's own RestartLimiter, unrelated to this).
+Restart=on-failure
+RestartSec=5
+
+# Least privilege: a dedicated system user, not root. The service only
+# binds loopback ports (127.0.0.1:8844/8845/8846, all unprivileged) and
+# needs read/write on its own state directory, nothing else.
+User=safeprompt
+Group=safeprompt
+StateDirectory=safeprompt
+StateDirectoryMode=0750
+
+# Defense-in-depth hardening -- doesn't replace the integrity/Authenticode-
+# equivalent checks already built into the watchdog/service themselves,
+# but costs nothing to also ask systemd for. StateDirectory= above already
+# makes /var/lib/safeprompt writable even under ProtectSystem=strict -- no
+# separate ReadWritePaths= needed.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

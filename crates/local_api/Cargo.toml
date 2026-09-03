@@ -1,0 +1,73 @@
+[package]
+name = "safeprompt-local-api"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "127.0.0.1-only HTTP API the browser extension talks to for request/response DLP scanning -- the same Inspector the CONNECT proxy uses, so there's one inspection engine regardless of which mechanism (proxy MITM vs. extension) sees the traffic."
+
+[dependencies]
+safeprompt-common = { path = "../common" }
+safeprompt-inspector = { path = "../inspector" }
+# Real (not dev-only) as of the local console UI (GET / + /ui/*) -- the
+# policy viewer/editor endpoints serialize/deserialize a real PolicyConfig,
+# not just the derived views (enabled_application_domains, upload_action)
+# the extension-facing /v1/* routes needed.
+safeprompt-policy = { path = "../policy" }
+# AGENT-FILE-002: /v1/inspect-file -- the browser extension's own file/
+# image upload interception (main-world-interceptor.js can't easily relay
+# multipart/form-data through chrome.runtime.sendMessage's structured-clone
+# channel the way it does a plain JSON string, so this reuses the same
+# extract-then-OCR-then-scan pipeline as connect_proxy's multipart handler,
+# just fed base64 bytes over a small JSON envelope instead of a parsed
+# multipart body).
+safeprompt-file-inspector = { path = "../file_inspector" }
+# AGENT-FILE-003 (2026-08-11): redact-first-verify -- an optional
+# second-opinion LLM pass over text that already scanned clean locally.
+# This crate only depends on the `safeprompt_common::LlmVerifier` trait
+# object (2026-08-27, open-core Phase 2) -- the real HTTP-calling
+# implementation (`safeprompt-llm-verify`) is private (`agent-enterprise/`).
+# SP-AUD-004 (2026-08-12): /ui/audit/export -- see with_audit_export's doc
+# comment for why this route needs to exist at all.
+safeprompt-storage = { path = "../storage" }
+base64.workspace = true
+axum.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+hmac.workspace = true
+sha2.workspace = true
+hex.workspace = true
+# AGENT-COMM-003 (2026-08-10): TLS termination for CENTRAL Agent mode,
+# using a customer-provided cert+key (no CA/PKI of our own -- see run_tls's
+# own doc comment). rustls, not openssl, matching every other TLS surface
+# already in this workspace (connect_proxy's MITM CA, reqwest's
+# rustls-tls feature).
+axum-server.workspace = true
+rustls.workspace = true
+# 2026-09-03: /v1/inspect, /v1/inspect-file and /v1/inspect-response --
+# the extension-facing scan routes -- now persist a DlpEvent per decision
+# the same way connect_proxy's own request/response path already does, so
+# `DlpEvent::id` needs a real (not dev-only) UUID generator here too.
+uuid.workspace = true
+
+[dev-dependencies]
+# 2026-08-27, open-core Phase 2: only needed by this crate's own
+# `MockLlmVerifier` test double (see the llm-verify wiring tests below) --
+# the real `safeprompt-llm-verify` implementation moved to
+# `agent-enterprise/`.
+async-trait.workspace = true
+reqwest.workspace = true
+# 2026-09-03: dev-only, for `sample_directory_sweep` -- an `#[ignore]`d
+# diagnostic that runs the exact real inspect_file_request pipeline
+# (extract_text + OCR + Inspector::inspect + the new masking logic)
+# against every file in D:\Safeprompt\samples. Not a real dependency of
+# this crate's actual code (that only ever gets an OCR engine handed to it
+# via `Inspector::with_ocr_engine`, never constructs one itself).
+safeprompt-ocr = { path = "../ocr" }
+# Only for generating a throwaway self-signed cert/key pair in the
+# AGENT-COMM-014 TLS test below -- production TLS always loads a
+# customer-provided cert/key, this crate never generates one itself.
+rcgen.workspace = true

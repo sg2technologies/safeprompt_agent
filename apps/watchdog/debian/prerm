@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+
+if [ -d /run/systemd/system ]; then
+    systemctl stop safeprompt-watchdog.service || true
+    systemctl disable safeprompt-watchdog.service || true
+fi
+
+exit 0

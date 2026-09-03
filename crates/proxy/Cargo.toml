@@ -1,0 +1,53 @@
+[package]
+name = "safeprompt-proxy"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+safeprompt-common = { path = "../common" }
+safeprompt-inspector = { path = "../inspector" }
+safeprompt-mcp-api = { path = "../mcp_api" }
+safeprompt-providers-api = { path = "../providers_api" }
+safeprompt-storage = { path = "../storage" }
+safeprompt-metrics = { path = "../metrics" }
+safeprompt-file-inspector = { path = "../file_inspector" }
+safeprompt-policy = { path = "../policy" }
+uuid.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+axum.workspace = true
+reqwest.workspace = true
+bytes.workspace = true
+http.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+futures-util.workspace = true
+chrono.workspace = true
+multer = "3.1.0"
+# AGENT-COMM-016 (2026-08-14): TLS termination for CENTRAL Agent mode's
+# API-gateway port (8844) -- same customer-provided-cert model, same
+# rustls stack, as local_api's AGENT-COMM-003 (port 8847). Closes a real
+# gap: CENTRAL mode's bind-address override already let this port serve
+# other machines' traffic, but with no TLS story at all until now, unlike
+# local_api which got one on day one.
+axum-server.workspace = true
+rustls.workspace = true
+
+[dev-dependencies]
+# 2026-08-27, open-core Phase 2: only needed by this crate's own
+# `MockSiemForwarder` test double (see the siem-forwarding test below) --
+# the real `safeprompt-siem` implementation moved to `agent-enterprise/`.
+async-trait.workspace = true
+tokio = { workspace = true, features = ["full", "test-util"] }
+# "multipart" is test-only (a client-side builder used to send fake file
+# uploads at the proxy in tests) -- not enabled on the main reqwest.workspace
+# dependency above, which is the runtime upstream-forwarding client and has
+# no reason to carry that feature into production builds.
+reqwest = { version = "0.12", default-features = false, features = ["multipart"] }
+# Only for generating a throwaway self-signed cert/key pair in the
+# AGENT-COMM-016 TLS test below -- production TLS always loads a
+# customer-provided cert/key, this crate never generates one itself (same
+# posture as local_api's own TLS test).
+rcgen.workspace = true

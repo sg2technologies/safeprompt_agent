@@ -1,0 +1,20 @@
+[package]
+name = "safeprompt-config"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+safeprompt-mcp-api = { path = "../mcp_api" }
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+axum.workspace = true
+uuid.workspace = true
+chrono.workspace = true

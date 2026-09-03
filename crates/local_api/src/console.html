@@ -1,0 +1,725 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SafePrompt Local Console</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    margin: 0; padding: 0 0 40px 0;
+    background: #f4f5f7; color: #1a1a1a;
+  }
+  header {
+    background: #12213b; color: #fff; padding: 18px 28px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header .badge {
+    font-size: 12px; background: #2b6cb0; padding: 3px 10px; border-radius: 10px;
+  }
+  main { max-width: 880px; margin: 0 auto; padding: 24px; }
+  nav { display: flex; gap: 6px; margin-bottom: 18px; }
+  nav button {
+    padding: 8px 16px; border: 1px solid #d0d3d9; background: #fff; border-radius: 6px 6px 0 0;
+    cursor: pointer; font-size: 14px; color: #333;
+  }
+  nav button.active { background: #fff; border-bottom: 2px solid #2b6cb0; color: #12213b; font-weight: 600; }
+  section.panel {
+    background: #fff; border: 1px solid #d0d3d9; border-radius: 0 6px 6px 6px; padding: 20px;
+    display: none;
+  }
+  section.panel.active { display: block; }
+  h2 { font-size: 15px; margin: 0 0 4px 0; }
+  p.hint { color: #666; font-size: 13px; margin: 0 0 14px 0; }
+  textarea {
+    width: 100%; font-family: Consolas, Menlo, monospace; font-size: 13px;
+    border: 1px solid #ccc; border-radius: 4px; padding: 10px; resize: vertical;
+  }
+  button.primary {
+    background: #2b6cb0; color: #fff; border: none; padding: 9px 18px; border-radius: 5px;
+    cursor: pointer; font-size: 14px; margin-top: 10px;
+  }
+  button.primary:hover { background: #245a94; }
+  button.secondary {
+    background: #fff; color: #2b6cb0; border: 1px solid #2b6cb0; padding: 9px 18px; border-radius: 5px;
+    cursor: pointer; font-size: 14px; margin-top: 10px; margin-left: 8px;
+  }
+  .result { margin-top: 16px; }
+  .action-pill {
+    display: inline-block; padding: 3px 12px; border-radius: 12px; font-weight: 600; font-size: 13px;
+    color: #fff; background: #718096; /* fallback for any unstyled action */
+  }
+  .action-Allow { background: #2f855a; }
+  .action-Warn { background: #b7791f; }
+  .action-Audit { background: #4a5568; }
+  .action-Redact { background: #b7791f; }
+  .action-Block { background: #c53030; }
+  .action-RequireApproval { background: #c53030; }
+  .action-Audit { background: #4a5568; }
+  .action-RequireApproval { background: #6b46c1; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; }
+  th { color: #666; font-weight: 600; }
+  .redacted-box {
+    margin-top: 12px; padding: 10px; background: #f7f7f9; border: 1px solid #e2e2e6; border-radius: 4px;
+    font-family: Consolas, Menlo, monospace; font-size: 13px; white-space: pre-wrap; word-break: break-word;
+  }
+  .status-grid { display: grid; grid-template-columns: 140px 1fr; gap: 8px 16px; font-size: 14px; }
+  .status-grid dt { color: #666; }
+  .status-grid dd { margin: 0; font-weight: 600; }
+  .msg { margin-top: 10px; padding: 8px 12px; border-radius: 4px; font-size: 13px; }
+  .msg.ok { background: #eafaf0; color: #1a5c34; border: 1px solid #b7e4c7; }
+  .msg.err { background: #fdecea; color: #9b1c1c; border: 1px solid #f3b4ac; }
+  .msg.warn { background: #fff8e6; color: #8a6100; border: 1px solid #f2d98d; }
+  footer { text-align: center; color: #888; font-size: 12px; margin-top: 24px; line-height: 1.9; }
+  footer .foot-mktg a { color: #2b6cb0; text-decoration: none; }
+  .up-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin: 14px 0 4px; }
+  .up-card { border: 1px solid #e2e5ea; border-radius: 8px; padding: 14px 16px; background: #fafbfc; }
+  .up-card .up-name { font-weight: 700; font-size: 15px; color: #12213b; }
+  .up-card .up-sub { font-size: 12px; color: #7a8394; margin: 2px 0 8px; }
+  .up-card ul { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.55; color: #37404f; }
+  .up-card li { margin: 3px 0; }
+  .up-cta { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .up-btn {
+    display: inline-block; background: #2b6cb0; color: #fff; padding: 9px 18px;
+    border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600;
+  }
+  .up-btn.secondary { background: #fff; color: #2b6cb0; border: 1px solid #2b6cb0; }
+  .ext-banner {
+    max-width: 880px; margin: 16px auto 0; padding: 14px 18px;
+    background: #fff8e6; border: 1px solid #f2d98d; border-radius: 6px; color: #6b4e00; font-size: 13px;
+  }
+  .ext-banner strong { font-size: 14px; }
+  .ext-banner ol { margin: 8px 0 0 0; padding-left: 20px; }
+  .ext-banner li { margin: 4px 0; }
+  .ext-banner code {
+    background: #fff; border: 1px solid #e6c766; border-radius: 3px; padding: 1px 6px; font-family: Consolas, Menlo, monospace;
+  }
+  .ext-banner button.tiny {
+    background: #fff; color: #8a6100; border: 1px solid #e6c766; padding: 2px 8px; border-radius: 4px;
+    cursor: pointer; font-size: 12px; margin-left: 6px;
+  }
+  .hist-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+  .hist-filters select, .hist-filters input[type=text] {
+    padding: 5px 8px; border: 1px solid #cdd3dc; border-radius: 4px; font: inherit;
+  }
+  .hist-filters input[type=text] { width: 160px; }
+  .hist-pagination { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 14px; }
+  .pol-h { margin: 22px 0 4px; font-size: 15px; }
+  .pol-row {
+    display: flex; align-items: center; gap: 10px; padding: 7px 0;
+    border-bottom: 1px solid #eef0f3;
+  }
+  .pol-row:last-child { border-bottom: 0; }
+  .pol-row .pol-label { flex: 1; font-size: 14px; }
+  .pol-row .pol-sub { color: #8a94a6; font-size: 12px; font-weight: normal; }
+  .pol-row input[type=text] { flex: 1; padding: 5px 8px; border: 1px solid #cdd3dc; border-radius: 4px; font: inherit; }
+  .pol-row select { padding: 4px 6px; border: 1px solid #cdd3dc; border-radius: 4px; font: inherit; }
+  .pol-row.off .pol-label { color: #99a2b0; }
+  .pol-toggle { position: relative; width: 38px; height: 22px; flex: none; }
+  .pol-toggle input { opacity: 0; width: 0; height: 0; }
+  .pol-toggle span {
+    position: absolute; inset: 0; background: #c8ced8; border-radius: 22px;
+    transition: background .15s; cursor: pointer;
+  }
+  .pol-toggle span::before {
+    content: ""; position: absolute; height: 16px; width: 16px; left: 3px; top: 3px;
+    background: #fff; border-radius: 50%; transition: transform .15s;
+  }
+  .pol-toggle input:checked + span { background: #2f7d3a; }
+  .pol-toggle input:checked + span::before { transform: translateX(16px); }
+  .pol-remove {
+    background: none; border: 0; color: #b23; font-size: 18px; line-height: 1;
+    cursor: pointer; padding: 0 4px;
+  }
+  .pol-adv { margin-top: 22px; }
+  .pol-adv summary { cursor: pointer; color: #6b7688; font-size: 13px; }
+  .pol-adv textarea { margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🛡️ SafePrompt Local Console</h1>
+  <span class="badge" id="edition-badge">loading…</span>
+</header>
+<div class="ext-banner" id="extension-banner" style="display:none">
+  <strong>⚠️ Browser extension isn't installed yet</strong>
+  <p style="margin:6px 0 0 0">This device isn't centrally managed, so Chrome/Edge won't install the extension automatically. Open the <strong>Browser Extension</strong> tab below — it's a one-time step that takes under a minute.</p>
+</div>
+<main>
+  <nav>
+    <button class="tab active" data-tab="test">Test a Message</button>
+    <button class="tab" data-tab="history">History</button>
+    <button class="tab" data-tab="policy">Policy</button>
+    <button class="tab" data-tab="extension">Browser Extension</button>
+    <button class="tab" data-tab="status">Status</button>
+    <button class="tab" data-tab="upgrade">Upgrade</button>
+  </nav>
+
+  <section class="panel active" id="panel-test">
+    <h2>Test detection &amp; redaction</h2>
+    <p class="hint">Paste text the way it would leave this device (a prompt) or come back from an AI service (a response), and see exactly what SafePrompt would do with it — no need to actually send it anywhere.</p>
+    <textarea id="test-input" rows="6" placeholder="e.g. my AWS key is AKIAIOSFODNN7EXAMPLE, DOB 12/05/1990">my AWS access key is AKIAIOSFODNN7EXAMPLE</textarea>
+    <div>
+      <button class="primary" id="btn-scan-prompt">Scan as outgoing prompt</button>
+      <button class="secondary" id="btn-scan-response">Scan as AI response</button>
+    </div>
+    <div class="result" id="test-result"></div>
+  </section>
+
+  <section class="panel" id="panel-history">
+    <h2>Recent activity on this device</h2>
+    <p class="hint">Every prompt and AI response SafePrompt acted on, straight from this device's own local log — nothing leaves the machine. Newest first.</p>
+    <div class="hist-filters">
+      <label class="hint" for="history-days">Show the last</label>
+      <select id="history-days">
+        <option value="1">24 hours</option>
+        <option value="7" selected>7 days</option>
+        <option value="30">30 days</option>
+      </select>
+      <label class="hint" for="history-action">Action</label>
+      <select id="history-action">
+        <option value="">Any</option>
+        <option value="Allow">Allow</option>
+        <option value="Warn">Warn</option>
+        <option value="Redact">Redact</option>
+        <option value="Block">Block</option>
+        <option value="Audit">Audit</option>
+        <option value="RequireApproval">Require approval</option>
+      </select>
+      <label class="hint" for="history-domain">App / site</label>
+      <input type="text" id="history-domain" placeholder="e.g. chatgpt.com" />
+      <button class="secondary" id="btn-reload-history">Refresh</button>
+    </div>
+    <div class="result" id="history-result"><p class="hint">Loading…</p></div>
+    <div class="hist-pagination" id="history-pagination" style="display:none">
+      <button class="secondary" id="btn-history-prev" type="button">&larr; Newer</button>
+      <span class="hint" id="history-page-info"></span>
+      <button class="secondary" id="btn-history-next" type="button">Older &rarr;</button>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-policy">
+    <h2>Policy</h2>
+    <p class="hint">Turn detection on or off and choose what happens when something is found. Changes apply to this Agent immediately. If central policy sync is enabled, a synced update can overwrite a local edit within its sync interval.</p>
+    <div class="result" id="policy-result"></div>
+
+    <h3 class="pol-h">Detection</h3>
+    <div id="policy-detectors"><p class="hint">Loading…</p></div>
+
+    <h3 class="pol-h">File uploads that can't be masked</h3>
+    <p class="hint">"Mask it" above only redacts a value in place for plain-text files (.txt, .csv, .md, .json, .log, .yaml, .xml, .html) — the file's content <em>is</em> its own text, so nothing is lost replacing just the matched value. A .docx, PDF, or image has real structure (formatting, layout, pixels) that gets thrown away extracting text from it, so writing masked text back as the file would corrupt it. This is what happens to those instead, when a detector set to "Mask it" fires on one:</p>
+    <div id="policy-file-fallback"></div>
+
+    <h3 class="pol-h">AI sites</h3>
+    <p class="hint">Sites the browser extension governs. Turn one off to stop scanning prompts there.</p>
+    <div id="policy-apps"><p class="hint">Loading…</p></div>
+
+    <h3 class="pol-h">Custom keywords</h3>
+    <p class="hint">Words or phrases to catch on top of the built-in detectors — a project codename, a client name, a competitor.</p>
+    <div id="policy-keywords"></div>
+    <div class="pol-row" style="margin-top:8px">
+      <input type="text" id="kw-new-pattern" placeholder="e.g. Project Bluebird" />
+      <select id="kw-new-action"></select>
+      <button class="secondary" id="btn-add-keyword" type="button">Add</button>
+    </div>
+
+    <div style="margin-top:20px">
+      <button class="primary" id="btn-apply-policy" type="button">Apply changes</button>
+      <button class="secondary" id="btn-reload-policy" type="button">Discard &amp; reload</button>
+    </div>
+
+    <details class="pol-adv">
+      <summary>Advanced — edit the raw policy JSON</summary>
+      <textarea id="policy-json" rows="16"></textarea>
+      <div><button class="secondary" id="btn-apply-policy-json" type="button">Apply raw JSON</button></div>
+    </details>
+  </section>
+
+  <section class="panel" id="panel-extension">
+    <h2>Browser extension</h2>
+    <p class="hint">The extension is what lets SafePrompt see prompts typed into ChatGPT, Claude, Gemini and Copilot in the browser. The agent's own protections (file scanning, the local API) work without it.</p>
+    <div class="result" id="extension-status"><p class="hint">Loading…</p></div>
+    <h3 style="margin:18px 0 6px">Install it (one-time, ~1 minute)</h3>
+    <p class="hint">On a personal (non-domain / non-Intune) machine Chrome and Edge block silent extension installs, so this is done by hand once. It stays installed after that.</p>
+    <ol>
+      <li>Open <code>chrome://extensions</code> (or <code>edge://extensions</code>) in a new tab</li>
+      <li>Turn on <strong>Developer mode</strong> (top-right toggle)</li>
+      <li>Click <strong>Load unpacked</strong></li>
+      <li>Select this folder:<br><code id="ext-folder-path">C:\Program Files\SafePrompt\extension\unpacked</code><button class="tiny" id="btn-copy-ext-path" type="button">Copy path</button></li>
+      <li>Reload this page — the status above should turn to <strong>detected</strong> within a minute or two</li>
+    </ol>
+    <p class="hint">On Chrome/Edge the extension talks to this agent automatically. Nothing else to configure.</p>
+  </section>
+
+  <section class="panel" id="panel-status">
+    <h2>Agent status</h2>
+    <dl class="status-grid" id="status-grid">
+      <dt>Loading…</dt><dd></dd>
+    </dl>
+  </section>
+
+  <section class="panel" id="panel-upgrade">
+    <h2>Do more with SafePrompt</h2>
+    <p class="hint">You're on <strong id="upgrade-edition">Community</strong> — the free, single-user edition. Paid editions add commercial-use licensing, deeper detection, outbound scanning, and fleet-wide management for teams.</p>
+
+    <div class="up-grid">
+      <div class="up-card">
+        <div class="up-name">Professional</div>
+        <div class="up-sub">1 user · 5 devices · commercial use</div>
+        <ul>
+          <li>Custom keyword rules &amp; unlimited governed AI sites</li>
+          <li>Advanced attack-obfuscation detection (evasion / encoding)</li>
+          <li>Entropy-based unknown-secret detection</li>
+          <li>Outbound (AI response) scanning</li>
+          <li>Local AI gateway &amp; multi-provider routing</li>
+          <li>90-day audit retention + cloud export &amp; compliance reports</li>
+        </ul>
+      </div>
+      <div class="up-card">
+        <div class="up-name">Business</div>
+        <div class="up-sub">From 10 seats · 5 devices / user</div>
+        <ul>
+          <li>Everything in Professional</li>
+          <li>Agentic-risk detection (tool abuse, exfiltration, context-flood)</li>
+          <li>Central policy management &amp; sync across the fleet</li>
+          <li>Fleet dashboard — device heartbeat &amp; reporting</li>
+          <li>Cloud audit sync, 180-day retention</li>
+          <li>SIEM (syslog) export available</li>
+        </ul>
+      </div>
+      <div class="up-card">
+        <div class="up-name">Enterprise</div>
+        <div class="up-sub">Contract · configurable devices / user</div>
+        <ul>
+          <li>Everything in Business</li>
+          <li>Local ML / NER detection</li>
+          <li>SIEM export included · 365-day audit retention</li>
+          <li>GPO / Intune / SCCM guided deployment</li>
+          <li>Priority support</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="up-cta">
+      <a class="up-btn" href="https://sg2technologies.com" target="_blank" rel="noopener">Talk to sales</a>
+      <a class="up-btn secondary" href="mailto:info@sg2technologies.com?subject=SafePrompt%20plan%20enquiry">info@sg2technologies.com</a>
+    </div>
+    <p class="hint" style="margin-top:12px">Upgrading is just a new signed license — the same Agent and browser extension you already have. Nothing to reinstall.</p>
+  </section>
+
+  <footer>
+    <div>SafePrompt Agent — local console, only reachable from this device (127.0.0.1)</div>
+    <div class="foot-mktg">
+      A product of <a href="https://sg2technologies.com" target="_blank" rel="noopener">SG2 Technologies</a> ·
+      <a href="mailto:info@sg2technologies.com">info@sg2technologies.com</a>
+    </div>
+  </footer>
+</main>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    $('#panel-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'policy') loadPolicy();
+    if (btn.dataset.tab === 'status') loadStatus();
+    if (btn.dataset.tab === 'history') loadHistory();
+    if (btn.dataset.tab === 'extension') loadExtension();
+    if (btn.dataset.tab === 'upgrade') loadStatus();
+  });
+});
+
+// What each policy action actually does at the enforcement point (the
+// browser extension / the API proxy). Matches agent/crates/common
+// Action::enforcement_action -- RequireApproval has no approval queue yet
+// (SP-RISK-004) so it fails closed to a block.
+const ACTION_EXPLAINS = {
+  Allow: ['ok', 'Sent as-is. Nothing sensitive matched an enabled detector.'],
+  Warn: ['warn', 'Sent unchanged — but the finding is logged, and the browser shows the user a warning toast.'],
+  Audit: ['warn', 'Sent unchanged — recorded in the audit log with elevated visibility (see the History tab). No user-facing message by design.'],
+  Redact: ['warn', 'The matched values are masked out before the message is sent (see below).'],
+  Block: ['err', 'The message is NOT sent. The user gets a block notification.'],
+  RequireApproval: ['err', 'The message is NOT sent — it is held for a human approve/deny decision. No approval queue exists yet, so today this behaves exactly like Block.'],
+};
+
+function renderResult(container, result) {
+  const action = result.action || 'Allow';
+  let html = `<span class="action-pill action-${action}">${action}</span>`;
+  const explain = ACTION_EXPLAINS[action];
+  if (explain) html += `<div class="msg ${explain[0]}" style="margin-top:8px">${escapeHtml(explain[1])}</div>`;
+  if (result.findings && result.findings.length) {
+    html += '<table><tr><th>Category</th><th>Match</th><th>Severity</th></tr>';
+    for (const f of result.findings) {
+      html += `<tr><td>${escapeHtml(f.category)}</td><td>${escapeHtml(f.match_name)}</td><td>${escapeHtml(f.severity)}</td></tr>`;
+    }
+    html += '</table>';
+  } else {
+    html += '<p class="hint" style="margin-top:8px">No findings.</p>';
+  }
+  if (result.sanitized_prompt !== undefined) {
+    const blocked = action === 'Block' || action === 'RequireApproval';
+    html += `<p class="hint" style="margin-top:12px">${blocked ? 'This message would be stopped — nothing is sent.' : 'What would actually be sent/shown:'}</p>`;
+    if (!blocked) html += `<div class="redacted-box">${escapeHtml(result.sanitized_prompt)}</div>`;
+  }
+  container.innerHTML = html;
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+async function scan(endpoint, resultEl) {
+  const text = $('#test-input').value;
+  resultEl.innerHTML = '<p class="hint">Scanning…</p>';
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    if (!resp.ok) {
+      resultEl.innerHTML = `<div class="msg err">Request failed (${resp.status})</div>`;
+      return;
+    }
+    renderResult(resultEl, await resp.json());
+  } catch (e) {
+    resultEl.innerHTML = `<div class="msg err">${escapeHtml(String(e))}</div>`;
+  }
+}
+
+$('#btn-scan-prompt').addEventListener('click', () => scan('/ui/inspect', $('#test-result')));
+$('#btn-scan-response').addEventListener('click', () => scan('/ui/inspect-response', $('#test-result')));
+
+// The Agent's Action vocabulary (agent/crates/common Action enum) and the
+// friendly names for each detector category (agent/crates/policy
+// FindingCategory). Kept in sync by hand -- both are small, stable enums.
+const POLICY_ACTIONS = ['Allow', 'Warn', 'Redact', 'Block', 'Audit', 'RequireApproval'];
+const POLICY_ACTION_LABELS = {
+  Allow: 'Allow', Warn: 'Warn only', Redact: 'Mask it', Block: 'Block the message',
+  Audit: 'Allow + flag for audit', RequireApproval: 'Hold for approval',
+};
+const DETECTOR_CATEGORIES = [
+  ['Pii', 'Personal info (names, emails, phone, IDs)'],
+  ['Secret', 'Secrets & API keys'],
+  ['Financial', 'Financial data (cards, accounts)'],
+  ['Internal', 'Internal hostnames & infrastructure'],
+  ['CustomKeyword', 'Custom keywords (below)'],
+  ['PromptInjection', 'Prompt-injection attempts'],
+  ['Toxicity', 'Toxic / unsafe content'],
+];
+
+// The full policy last fetched from the Agent -- edits are layered onto
+// THIS object so fields the friendly UI doesn't render (capabilities,
+// uploads, rules, per-site upload/prompt_scan flags) are preserved on Apply.
+let currentPolicy = null;
+
+function actionSelect(selected) {
+  const opts = POLICY_ACTIONS.map(a =>
+    `<option value="${a}"${a === selected ? ' selected' : ''}>${escapeHtml(POLICY_ACTION_LABELS[a] || a)}</option>`
+  ).join('');
+  return `<select>${opts}</select>`;
+}
+
+function renderPolicy() {
+  const p = currentPolicy;
+  const sec = p.security = p.security || {};
+  sec.detectors = sec.detectors || {};
+  sec.actions = sec.actions || {};
+
+  // Detection categories
+  $('#policy-detectors').innerHTML = DETECTOR_CATEGORIES.map(([key, label]) => {
+    const on = sec.detectors[key] !== false;
+    const act = sec.actions[key] || 'Redact';
+    return `<div class="pol-row${on ? '' : ' off'}" data-det="${key}">
+      <label class="pol-toggle"><input type="checkbox" ${on ? 'checked' : ''} data-det-on="${key}"><span></span></label>
+      <span class="pol-label">${escapeHtml(label)}</span>
+      ${actionSelect(act).replace('<select>', `<select data-det-action="${key}">`)}
+    </div>`;
+  }).join('');
+
+  // Fallback action for a file/image upload that can't be safely masked
+  // in place -- defaults to Block (matches the Agent's own default when
+  // this key is absent from a policy document at all, see
+  // safeprompt_policy::SecurityPolicy::unmaskable_file_action).
+  const fallbackAction = sec.unmaskable_file_action || 'Block';
+  $('#policy-file-fallback').innerHTML = `<div class="pol-row">
+    <span class="pol-label">Unmaskable file/image uploads</span>
+    ${actionSelect(fallbackAction).replace('<select>', '<select id="policy-file-fallback-select">')}
+  </div>`;
+
+  // AI sites
+  const apps = p.applications || [];
+  $('#policy-apps').innerHTML = apps.length ? apps.map((a, i) => {
+    const domains = (a.match_domains || []).join(', ');
+    return `<div class="pol-row${a.enabled ? '' : ' off'}">
+      <label class="pol-toggle"><input type="checkbox" ${a.enabled ? 'checked' : ''} data-app="${i}"><span></span></label>
+      <span class="pol-label">${escapeHtml(a.id || '(unnamed)')}<br><span class="pol-sub">${escapeHtml(domains || 'no domains')}</span></span>
+    </div>`;
+  }).join('') : '<p class="hint">No AI sites configured in this policy.</p>';
+
+  // Custom keywords
+  const kws = p.custom_keywords || [];
+  $('#policy-keywords').innerHTML = kws.length ? kws.map((k, i) =>
+    `<div class="pol-row">
+      <span class="pol-label">${escapeHtml(k.pattern)}</span>
+      ${actionSelect(k.action || 'Redact').replace('<select>', `<select data-kw-action="${i}">`)}
+      <button class="pol-remove" type="button" data-kw-remove="${i}" title="Remove">&times;</button>
+    </div>`
+  ).join('') : '<p class="hint">None yet.</p>';
+
+  $('#policy-json').value = JSON.stringify(p, null, 2);
+
+  // Toggling a row's checkbox greys it live (purely cosmetic until Apply).
+  $('#policy-detectors').querySelectorAll('input[data-det-on]').forEach(cb =>
+    cb.addEventListener('change', () => cb.closest('.pol-row').classList.toggle('off', !cb.checked)));
+  $('#policy-apps').querySelectorAll('input[data-app]').forEach(cb =>
+    cb.addEventListener('change', () => cb.closest('.pol-row').classList.toggle('off', !cb.checked)));
+  $('#policy-keywords').querySelectorAll('[data-kw-remove]').forEach(btn =>
+    btn.addEventListener('click', () => {
+      currentPolicy.custom_keywords.splice(Number(btn.dataset.kwRemove), 1);
+      renderPolicy();
+    }));
+  $('#policy-keywords').querySelectorAll('[data-kw-action]').forEach(sel =>
+    sel.addEventListener('change', () => { currentPolicy.custom_keywords[Number(sel.dataset.kwAction)].action = sel.value; }));
+}
+
+async function loadPolicy() {
+  $('#policy-result').innerHTML = '';
+  $('#policy-detectors').innerHTML = '<p class="hint">Loading…</p>';
+  try {
+    const resp = await fetch('/ui/policy');
+    currentPolicy = await resp.json();
+    renderPolicy();
+  } catch (e) {
+    $('#policy-detectors').innerHTML = `<div class="msg err">${escapeHtml(String(e))}</div>`;
+  }
+}
+$('#btn-reload-policy').addEventListener('click', loadPolicy);
+
+// Populate the "add keyword" action dropdown once.
+$('#kw-new-action').innerHTML = POLICY_ACTIONS.map(a =>
+  `<option value="${a}"${a === 'Redact' ? ' selected' : ''}>${escapeHtml(POLICY_ACTION_LABELS[a] || a)}</option>`).join('');
+
+$('#btn-add-keyword').addEventListener('click', () => {
+  const pat = $('#kw-new-pattern').value.trim();
+  if (!pat) return;
+  if (!currentPolicy) { $('#policy-result').innerHTML = '<div class="msg err">Policy not loaded yet.</div>'; return; }
+  currentPolicy.custom_keywords = currentPolicy.custom_keywords || [];
+  currentPolicy.custom_keywords.push({ pattern: pat, action: $('#kw-new-action').value, case_sensitive: false });
+  $('#kw-new-pattern').value = '';
+  renderPolicy();
+});
+
+async function postPolicy(policyObj) {
+  const out = $('#policy-result');
+  try {
+    const resp = await fetch('/ui/policy', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(policyObj),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      out.innerHTML = `<div class="msg err">${escapeHtml(body.error || ('Request failed (' + resp.status + ')'))}</div>`;
+      return;
+    }
+    let html = '<div class="msg ok">Applied — this Agent is now using the new policy.</div>';
+    if (body.warning) html += `<div class="msg warn">${escapeHtml(body.warning)}</div>`;
+    html += '<div class="msg" style="opacity:0.75">The browser extension re-checks this Agent every ~15 minutes, so an AI-site change can take a little while to take effect in the browser.</div>';
+    out.innerHTML = html;
+    currentPolicy = policyObj;
+    renderPolicy();
+    loadStatus();
+  } catch (e) {
+    out.innerHTML = `<div class="msg err">${escapeHtml(String(e))}</div>`;
+  }
+}
+
+$('#btn-apply-policy').addEventListener('click', () => {
+  if (!currentPolicy) return;
+  const p = currentPolicy;
+  p.security = p.security || {}; p.security.detectors = p.security.detectors || {}; p.security.actions = p.security.actions || {};
+  $('#policy-detectors').querySelectorAll('input[data-det-on]').forEach(cb => {
+    p.security.detectors[cb.dataset.detOn] = cb.checked;
+  });
+  $('#policy-detectors').querySelectorAll('select[data-det-action]').forEach(sel => {
+    p.security.actions[sel.dataset.detAction] = sel.value;
+  });
+  const fallbackSel = $('#policy-file-fallback-select');
+  if (fallbackSel) p.security.unmaskable_file_action = fallbackSel.value;
+  $('#policy-apps').querySelectorAll('input[data-app]').forEach(cb => {
+    p.applications[Number(cb.dataset.app)].enabled = cb.checked;
+  });
+  // keyword actions/removals are already folded into currentPolicy live
+  postPolicy(p);
+});
+
+$('#btn-apply-policy-json').addEventListener('click', () => {
+  let parsed;
+  try {
+    parsed = JSON.parse($('#policy-json').value);
+  } catch (e) {
+    $('#policy-result').innerHTML = `<div class="msg err">That's not valid JSON: ${escapeHtml(String(e))}</div>`;
+    return;
+  }
+  postPolicy(parsed);
+});
+
+const HISTORY_PAGE_SIZE = 25;
+// Reset to page 1 whenever a filter/window changes -- an old offset from a
+// wider result set almost never lands on a meaningful page of a narrower
+// (filtered) one. Only Prev/Next advance this.
+let historyOffset = 0;
+
+async function loadHistory() {
+  const out = $('#history-result');
+  const days = $('#history-days').value || '7';
+  const action = $('#history-action').value;
+  const domain = $('#history-domain').value.trim();
+  out.innerHTML = '<p class="hint">Loading…</p>';
+  $('#history-pagination').style.display = 'none';
+  try {
+    const params = new URLSearchParams({ days, limit: String(HISTORY_PAGE_SIZE), offset: String(historyOffset) });
+    if (action) params.set('action', action);
+    if (domain) params.set('domain', domain);
+    const resp = await fetch('/ui/audit/recent?' + params.toString());
+    const data = await resp.json();
+    if (data.available === false) {
+      out.innerHTML = '<div class="msg">No local activity log is configured on this Agent yet.</div>';
+      return;
+    }
+    if (data.error) {
+      out.innerHTML = `<div class="msg err">${escapeHtml(data.error)}</div>`;
+      return;
+    }
+    const events = data.events || [];
+    const total = data.total_matching ?? events.length;
+    if (!total) {
+      out.innerHTML = (action || domain)
+        ? '<div class="msg">No events match this filter in the selected window.</div>'
+        : '<div class="msg ok">Nothing to show — SafePrompt hasn\'t had to act on anything in this window.</div>';
+      return;
+    }
+    let html = `<p class="hint">${total} event${total === 1 ? '' : 's'} in the last ${escapeHtml(String(data.window_days))} day(s)${(action || domain) ? ' matching this filter' : ''}.</p>`;
+    html += '<table><tr><th>When</th><th>App / site</th><th>Action</th><th>Findings</th></tr>';
+    for (const e of events) {
+      const when = new Date(e.timestamp).toLocaleString();
+      const where = escapeHtml(e.domain || e.app || '—');
+      const findings = (e.findings || [])
+        .map(f => `${escapeHtml(f.category)}${f.severity ? ' (' + escapeHtml(f.severity) + ')' : ''}`)
+        .join(', ') || '—';
+      html += `<tr><td>${escapeHtml(when)}</td><td>${where}</td>`
+        + `<td><span class="action-pill action-${escapeHtml(e.action)}">${escapeHtml(e.action)}</span></td>`
+        + `<td>${findings}</td></tr>`;
+    }
+    html += '</table>';
+    out.innerHTML = html;
+
+    // Pagination -- only show it once there's more than one page to move
+    // between (a single-page result doesn't need Prev/Next cluttering the
+    // view). historyOffset/HISTORY_PAGE_SIZE math mirrors the query just sent.
+    if (historyOffset > 0 || data.has_more) {
+      const from = total === 0 ? 0 : historyOffset + 1;
+      const to = historyOffset + events.length;
+      $('#history-page-info').textContent = `${from}–${to} of ${total}`;
+      $('#btn-history-prev').disabled = historyOffset === 0;
+      $('#btn-history-next').disabled = !data.has_more;
+      $('#history-pagination').style.display = '';
+    }
+  } catch (e) {
+    out.innerHTML = `<div class="msg err">${escapeHtml(String(e))}</div>`;
+  }
+}
+$('#btn-reload-history').addEventListener('click', () => { historyOffset = 0; loadHistory(); });
+$('#history-days').addEventListener('change', () => { historyOffset = 0; loadHistory(); });
+$('#history-action').addEventListener('change', () => { historyOffset = 0; loadHistory(); });
+// 'change' (on blur/Enter), not 'input' -- avoids firing a request on every
+// keystroke while typing a domain to filter by.
+$('#history-domain').addEventListener('change', () => { historyOffset = 0; loadHistory(); });
+$('#history-domain').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { historyOffset = 0; loadHistory(); } });
+$('#btn-history-prev').addEventListener('click', () => { historyOffset = Math.max(0, historyOffset - HISTORY_PAGE_SIZE); loadHistory(); });
+$('#btn-history-next').addEventListener('click', () => { historyOffset += HISTORY_PAGE_SIZE; loadHistory(); });
+
+async function loadStatus() {
+  const grid = $('#status-grid');
+  grid.innerHTML = '<dt>Loading…</dt><dd></dd>';
+  try {
+    const resp = await fetch('/ui/status');
+    const s = await resp.json();
+    $('#edition-badge').textContent = s.edition || 'unknown';
+    const ue = $('#upgrade-edition');
+    if (ue) ue.textContent = s.edition || 'Community';
+    // Hide "Upgrade" for editions that already have everything.
+    const upTab = document.querySelector('.tab[data-tab="upgrade"]');
+    if (upTab) upTab.hidden = /enterprise/i.test(s.edition || '');
+    // Set by Install-ExtensionForceInstall.ps1 when this machine isn't
+    // domain/Intune-managed, so Chrome refuses the silent
+    // ExtensionInstallForcelist install -- see that script's own doc
+    // comment. `undefined` (a non-Windows/dev build with no marker path
+    // configured at all) must not show the banner either.
+    $('#extension-banner').style.display = (s.extension_manual_install_needed && !s.extension_detected) ? 'block' : 'none';
+    // ONB-008: policy_source/policy_version/policy_local_override --
+    // persistent provenance for the currently-effective policy, so "did my
+    // local edit stick, or did central sync just overwrite it?" has a real
+    // answer here instead of only in the one-shot POST /ui/policy response.
+    let policySourceLabel = s.policy_source === 'local' ? 'This device (local edit)' : 'Central (synced)';
+    if (s.policy_local_override) policySourceLabel += ' — not yet synced to the Control Plane';
+    const rows = [
+      ['Edition', s.edition],
+      ['Tenant', s.tenant || '(none)'],
+      ['Applications governed', s.applications_count],
+      ['Custom keyword rules', s.custom_keywords_count],
+      ['Max AI sites (license cap)', s.max_ai_sites ?? 'uncapped'],
+      ['Central policy sync', s.policy_sync_active ? 'active' : 'inactive (local policy only)'],
+      ['Current policy source', `${policySourceLabel} (v${s.policy_version ?? 0})`],
+      ['Browser extension check-in', 'every ~15 minutes (see note above after applying a policy change)'],
+    ];
+    grid.innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  } catch (e) {
+    grid.innerHTML = `<dt>Error</dt><dd>${escapeHtml(String(e))}</dd>`;
+  }
+}
+
+async function loadExtension() {
+  const out = $('#extension-status');
+  out.innerHTML = '<p class="hint">Loading…</p>';
+  try {
+    const resp = await fetch('/ui/status');
+    const s = await resp.json();
+    if (s.extension_detected) {
+      const p = (s.extension_profiles && typeof s.extension_profiles === 'object') ? Object.keys(s.extension_profiles) : [];
+      const suffix = p.length ? ` (${p.length} browser profile${p.length === 1 ? '' : 's'})` : '';
+      out.innerHTML = `<div class="msg ok">✓ Extension detected and checking in${suffix}. Browser coverage is active.</div>`;
+    } else {
+      out.innerHTML = '<div class="msg err">Extension not detected yet. Follow the steps below, then reload this page.</div>';
+    }
+  } catch (e) {
+    out.innerHTML = `<div class="msg err">${escapeHtml(String(e))}</div>`;
+  }
+}
+
+$('#btn-copy-ext-path').addEventListener('click', async () => {
+  const btn = $('#btn-copy-ext-path');
+  try {
+    await navigator.clipboard.writeText($('#ext-folder-path').textContent);
+    const original = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = original; }, 1500);
+  } catch (e) {
+    // Clipboard access can be blocked in some browser/security
+    // configurations -- the path is still selectable text either way.
+    btn.textContent = 'Select the path above';
+  }
+});
+
+// Populate the header badge and status tab on first load.
+loadStatus();
+</script>
+</body>
+</html>

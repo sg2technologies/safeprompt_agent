@@ -1,0 +1,18 @@
+[package]
+name = "safeprompt-updater"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+safeprompt-integrity = { path = "../integrity" }
+reqwest.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+rand_core.workspace = true
+tempfile = "3"
+tokio = { workspace = true, features = ["full", "test-util"] }
+axum.workspace = true
+ed25519-dalek.workspace = true
+chrono.workspace = true

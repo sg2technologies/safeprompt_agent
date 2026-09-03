@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchDaemon for the SafePrompt Agent watchdog: macOS's equivalent of
+  the Windows Service (installer/SafePrompt.wxs) and systemd unit
+  (agent/systemd/safeprompt-watchdog.service). Same two-tier supervision
+  model on every platform: launchd supervises the watchdog, the watchdog
+  supervises safeprompt-service (spawns it, verifies its integrity
+  manifest before each start, restarts it on crash).
+
+  UNTESTED: no macOS machine was available to build or run this on. The
+  binary paths, RunAtLoad/KeepAlive semantics, and log redirection follow
+  Apple's documented launchd.plist(5) format correctly, but this file has
+  never actually been loaded by launchd. Treat it as a correct starting
+  point to verify on a real Mac, not a verified artifact, unlike the
+  Windows Service integration and the Linux systemd unit, both of which
+  were live-tested against the real thing.
+
+  Install to /Library/LaunchDaemons/com.safeprompt.watchdog.plist (root:wheel,
+  mode 644; launchd refuses to load a LaunchDaemon plist with looser
+  permissions) and load with:
+    sudo launchctl load /Library/LaunchDaemons/com.safeprompt.watchdog.plist
+
+  Note: XML comments cannot contain two consecutive hyphens anywhere in
+  their body, only immediately before the closing angle bracket. An early
+  draft of this file used a doubled hyphen as a prose separator throughout
+  and failed basic XML well-formedness checks as a result. Worth
+  remembering for any future plist/XML authoring.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.safeprompt.watchdog</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Library/Application Support/SafePrompt/safeprompt-watchdog</string>
+    </array>
+
+    <!-- LaunchDaemons run as root by default; drop to a dedicated,
+         least-privilege user the same way the systemd unit's User=/Group=
+         does (see agent/systemd/safeprompt-watchdog.service). The
+         "safeprompt" user/group must be created by the .pkg's postinstall
+         script (see agent/macos/README.md) before this loads: launchd
+         does not create UserName/GroupName accounts itself. -->
+    <key>UserName</key>
+    <string>safeprompt</string>
+    <key>GroupName</key>
+    <string>safeprompt</string>
+
+    <!-- KeepAlive + RunAtLoad: start on boot, and have launchd itself
+         restart the watchdog if it ever exits; same "supervisor
+         supervises the supervisor" layering as systemd's Restart=on-failure
+         and the Windows SCM's service-recovery options. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Library/Application Support/SafePrompt</string>
+
+    <key>StandardOutPath</key>
+    <string>/Library/Application Support/SafePrompt/watchdog.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Library/Application Support/SafePrompt/watchdog.err.log</string>
+
+    <!-- Restart backoff: launchd's own equivalent of the watchdog's
+         internal RestartLimiter, for the outer (launchd-supervises-
+         watchdog) tier specifically. -->
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+</dict>
+</plist>

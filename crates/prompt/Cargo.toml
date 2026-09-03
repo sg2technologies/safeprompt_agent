@@ -1,0 +1,13 @@
+[package]
+name = "safeprompt-prompt"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+safeprompt-common = { path = "../common" }
+regex.workspace = true
+serde.workspace = true
+# base64/unicode-security/unicode-normalization moved with the advanced tier
+# to agent-enterprise/crates/attack_advanced (2026-08-27, open-core Phase 3)
+# -- this crate (basic tier only) no longer needs any deobfuscation logic.

@@ -1,0 +1,14 @@
+[package]
+name = "safeprompt-metrics"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+axum.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+reqwest.workspace = true

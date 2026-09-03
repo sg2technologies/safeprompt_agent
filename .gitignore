@@ -1,0 +1,20 @@
+# Rust build output -- this repo's own .cargo/config.toml may still point
+# at a different target-dir on some machines; ignore both the local
+# default and any override consistently by name.
+/target/
+target/
+
+# Third-party native runtime DLLs OCR needs (onnxruntime.dll, pdfium.dll) --
+# real, multi-MB redistributables, not something this repo vendors in git.
+# The build script expects them here and throws a clear, actionable error
+# (with the real download source) if they're missing.
+/vendor/
+vendor/
+
+# Local test/dev artifacts
+*.db
+*.log
+.env
+.env.*
+!.env.example
+.vscode/

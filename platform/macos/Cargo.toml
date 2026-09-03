@@ -1,0 +1,9 @@
+[package]
+name = "safeprompt-platform-macos"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+safeprompt-common = { path = "../../crates/common" }
+tracing.workspace = true

@@ -1,0 +1,37 @@
+[package]
+name = "safeprompt-connect-proxy"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+safeprompt-common = { path = "../common" }
+safeprompt-inspector = { path = "../inspector" }
+# AGENT-FILE-001: real browser file/image uploads (CONNECT-proxy is the
+# path that actually sees them, unlike the extension's page-level JS or
+# the API Gateway's own separate multipart handling in safeprompt-proxy)
+# get the same multipart-parse-then-OCR treatment as the Gateway path --
+# see scan_multipart_request in this crate's server.rs, ported from
+# safeprompt-proxy::scan_multipart_request rather than duplicating new
+# detection logic.
+safeprompt-file-inspector = { path = "../file_inspector" }
+safeprompt-policy = { path = "../policy" }
+multer = "3.1.0"
+futures-util.workspace = true
+tokio.workspace = true
+tokio-rustls.workspace = true
+rustls.workspace = true
+rustls-pki-types.workspace = true
+rcgen.workspace = true
+webpki-roots.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+bytes.workspace = true
+time.workspace = true
+aes-gcm.workspace = true
+sha2.workspace = true
+base64.workspace = true
+rand_core.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

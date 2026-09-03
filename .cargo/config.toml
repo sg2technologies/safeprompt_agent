@@ -1,0 +1,10 @@
+# 2026-08-11: build artifacts redirected to D:\ -- C:\ filled to 0 bytes
+# free mid-session (agent/target had grown to 27.5GB across debug + release
+# + test builds), which crashed link.exe with 0xc0000005 on two separate
+# unrelated attempts before the real cause (disk space, not a code or
+# linker bug) was found. D:\ has ~900GB free vs C:\'s much tighter budget,
+# and target/ is 100% regenerable build output -- nothing here needs to
+# live on C:\ at all. Existing artifacts were moved here (not deleted) so
+# this didn't cost a full rebuild the day it was set up.
+[build]
+target-dir = "D:/SafePromptBuild/agent-target"

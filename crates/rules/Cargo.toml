@@ -1,0 +1,10 @@
+[package]
+name = "safeprompt-rules"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+safeprompt-common = { path = "../common" }
+safeprompt-risk = { path = "../risk" }
+serde.workspace = true

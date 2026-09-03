@@ -1,0 +1,11 @@
+[package]
+name = "safeprompt-logger"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+safeprompt-common = { path = "../common" }
+tracing.workspace = true
+chrono.workspace = true
+serde.workspace = true

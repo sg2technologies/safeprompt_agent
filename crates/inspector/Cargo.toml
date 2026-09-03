@@ -1,0 +1,24 @@
+[package]
+name = "safeprompt-inspector"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+safeprompt-common = { path = "../common" }
+safeprompt-pii = { path = "../pii" }
+safeprompt-secrets = { path = "../secrets" }
+safeprompt-prompt = { path = "../prompt" }
+safeprompt-policy = { path = "../policy" }
+safeprompt-risk = { path = "../risk" }
+safeprompt-response = { path = "../response" }
+safeprompt-ocr = { path = "../ocr" }
+safeprompt-guardrails = { path = "../guardrails" }
+serde.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+# Only for tests -- constructing a Rule/Condition to put in PolicyConfig.rules.
+# Production code here never names the rules crate's types directly, only
+# safeprompt-policy does (PolicyConfig.rules: Vec<safeprompt_rules::Rule>).
+safeprompt-rules = { path = "../rules" }

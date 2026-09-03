@@ -1,0 +1,34 @@
+[package]
+name = "safeprompt-file-inspector"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Extracts scannable plain text from uploaded files (.docx/.pdf/plain text) so the existing DLP scanners can inspect file-upload content, not just chat prompt text."
+
+[dependencies]
+anyhow.workspace = true
+pdf-extract = "0.12.0"
+tracing.workspace = true
+zip = "8.6.0"
+# Pinned exactly, not "0.1" -- published 2026-07-30 (8 days old as of this
+# integration), pre-1.0, real risk of behavior/API churn between patch
+# releases. Bump deliberately after checking the changelog, not
+# automatically. See this crate's own doc comment on why docx/pdf/
+# plaintext are deliberately NOT re-routed through it despite it also
+# supporting those formats -- this only handles genuinely new formats this
+# crate had no extractor for at all.
+anydoc = "=0.1.7"
+safeprompt-ocr = { path = "../ocr" }
+# Renders PDF pages to bitmaps for the scanned-PDF-detection path (see
+# `extract_pdf`). Technically pre-1.0 (0.9.x) but genuinely mature --
+# created 2022, 88 published versions, ~1.86M total downloads, actively
+# maintained (verified against crates.io directly 2026-08-07) -- a caret
+# range is a reasonable amount of trust here, unlike `anydoc`/`oar-ocr`
+# above. Binds to a real Pdfium (Google Chromium's own PDF library, BSD-3
+# core, MIT/Apache-2.0 wrapper) shared library at *runtime*, not build
+# time -- see `resolve_pdfium_library_path` for how that binary is located.
+pdfium-render = "0.9"
+image = "0.25"
+
+[dev-dependencies]

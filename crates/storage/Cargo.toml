@@ -1,0 +1,24 @@
+[package]
+name = "safeprompt-storage"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+safeprompt-common = { path = "../common" }
+serde.workspace = true
+thiserror.workspace = true
+sqlx = { version = "0.8", default-features = false, features = ["any", "sqlite", "postgres", "runtime-tokio", "chrono", "uuid", "tls-rustls"] }
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+anyhow.workspace = true
+aes-gcm.workspace = true
+sha2.workspace = true
+hmac.workspace = true
+hex.workspace = true
+base64.workspace = true
+rand_core.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
