@@ -96,8 +96,8 @@ pub struct LicenseClaims {
     /// (same decision as `seat_id`). Populated once a real identity
     /// mechanism exists behind it (Professional: login; Business: Entra
     /// ID/AD/email invitation) -- deliberately not built by this field's
-    /// addition alone. `None` for Community's anonymous model and every
-    /// pre-existing license.
+    /// addition alone, see task.md's reconciled P0 list. `None` for
+    /// Community's anonymous model and every pre-existing license.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
     /// This *seat's* device cap (e.g. "up to 5 devices" per person),
@@ -117,9 +117,9 @@ pub struct LicenseClaims {
     /// backward-compatibility posture as every other optional field above.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub issued_at: Option<DateTime<Utc>>,
-    /// Real, offline-verifiable revocation mechanism, closed 2026-08-08 --
-    /// without it, revocation does nothing for a device that never checks
-    /// in again. If set, this license stops verifying once
+    /// Real, offline-verifiable revocation mechanism (task.md's "license
+    /// revocation... does nothing for a device that never checks in again"
+    /// gap, closed 2026-08-08): if set, this license stops verifying once
     /// `issued_at + max_offline_days` has passed, independent of `expiry`.
     /// A device that keeps checking in gets `issued_at` refreshed on every
     /// reissue (see `_sync_license_with_cloud`), so this is invisible to a
@@ -137,8 +137,8 @@ pub struct LicenseClaims {
     /// own schedule regardless of what the customer actually paid for.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_offline_days: Option<u32>,
-    /// Grace period, closed alongside the above: the number of days *past*
-    /// `expiry` this license keeps
+    /// Grace period (task.md's other flagged gap, closed alongside the
+    /// above): the number of days *past* `expiry` this license keeps
     /// verifying successfully, so a delayed renewal/payment or a brief
     /// offline stretch spanning the exact expiry moment doesn't cut off a
     /// paying customer's features at the stroke of midnight with zero
@@ -517,11 +517,34 @@ impl FeatureManager {
         Self { claims: None }
     }
 
+    /// 2026-09-04: a real, genuinely-issued Community license always
+    /// carries exactly these two named features (confirmed against
+    /// `installer/dev-license/editions/community/license.json` and
+    /// `backend/api/agent.py::_AGENT_DOWNLOAD_DEFAULTS`) -- both are part
+    /// of Community's marketed, always-free baseline (browser-based AI
+    /// coverage and on-device OCR, see `features::BROWSER_COVERAGE`'s and
+    /// `features::OCR`'s own doc comments), not something a Community
+    /// tenant has to unlock. `is_enabled` grants these even with NO
+    /// license file at all, so the truly-unlicensed/anonymous path this
+    /// struct's own doc comment describes ("still runs, just at
+    /// Edition::Community") actually behaves like Community instead of a
+    /// silently crippled zero-feature stub. Real bug this fixes, caught
+    /// live: a fresh `cargo build` of the public repo with no license.json
+    /// never started `local_api` at all (browser_coverage gates it
+    /// entirely) — directly contradicting the README's "no account or
+    /// sign-in needed" promise for the from-source build path. Every
+    /// OTHER named feature (mcp/siem/response_scanning/entropy/fleet/
+    /// attack_advanced/attack_agentic/llm_verify/audit_export/
+    /// multi_provider/policy_sync/advanced_ner) is Professional+ and
+    /// correctly stays off without a real license.
+    const UNLICENSED_COMMUNITY_FEATURES: &'static [&'static str] =
+        &[features::BROWSER_COVERAGE, features::OCR];
+
     pub fn is_enabled(&self, feature: &str) -> bool {
-        self.claims
-            .as_ref()
-            .map(|c| c.features.iter().any(|f| f == feature))
-            .unwrap_or(false)
+        match &self.claims {
+            Some(c) => c.features.iter().any(|f| f == feature),
+            None => Self::UNLICENSED_COMMUNITY_FEATURES.contains(&feature),
+        }
     }
 
     pub fn edition(&self) -> Edition {
@@ -534,10 +557,13 @@ impl FeatureManager {
 
     /// Cap on how many AI-site domains the browser extension may cover at
     /// once (see `LicenseClaims::max_ai_sites`'s own doc comment for the
-    /// backward-compatibility story). `None` here means "no cap" --
-    /// either an unlicensed Agent (which doesn't run browser coverage at
-    /// all, so the value is moot) or a license issued with the field
-    /// unset, e.g. Enterprise's "customize the site list" tier.
+    /// backward-compatibility story). `None` here means "no cap" -- either
+    /// a license issued with the field unset (e.g. Enterprise's "customize
+    /// the site list" tier) or a genuinely unlicensed Agent, which (since
+    /// the `is_enabled` fix above) DOES run browser coverage now, just
+    /// uncapped rather than at a real Community license's typical cap --
+    /// left uncapped rather than guessing a number, since there's no
+    /// issued license to read one from.
     pub fn max_ai_sites(&self) -> Option<u32> {
         self.claims.as_ref().and_then(|c| c.max_ai_sites)
     }
@@ -786,10 +812,21 @@ mod tests {
     }
 
     #[test]
-    fn unlicensed_agent_defaults_to_community_with_no_features() {
+    fn unlicensed_agent_defaults_to_community_with_the_free_baseline_only() {
+        // 2026-09-04: was "...with_no_features" -- an unlicensed Agent used
+        // to grant literally nothing, including browser_coverage, which
+        // silently kept local_api from ever starting at all (see
+        // FeatureManager::UNLICENSED_COMMUNITY_FEATURES's own doc comment).
         let manager = FeatureManager::unlicensed();
-        assert!(!manager.is_enabled("gateway"));
         assert_eq!(manager.edition(), Edition::Community);
+        assert!(manager.is_enabled(features::BROWSER_COVERAGE), "Community's browser coverage must work with zero setup");
+        assert!(manager.is_enabled(features::OCR), "Community's OCR must work with zero setup");
+        // Every higher-tier flag stays off without a real license.
+        assert!(!manager.is_enabled(features::MCP_FIREWALL));
+        assert!(!manager.is_enabled(features::AUDIT_SIEM));
+        assert!(!manager.is_enabled(features::ENTROPY_DETECTION));
+        assert!(!manager.is_enabled(features::FLEET_MANAGEMENT));
+        assert!(!manager.is_enabled("gateway"), "an unrecognized feature string must never match");
     }
 
     #[test]
