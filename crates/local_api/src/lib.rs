@@ -1116,6 +1116,19 @@ async fn ui_status(State(state): State<ApiState>) -> Json<serde_json::Value> {
         "extension_profiles": extension_profiles,
         "extension_folder_path": extension_folder_path,
         "extension_folder_kind": extension_folder_kind,
+        // 2026-09-04: drives the console's "Pause protection" countdown
+        // banner -- see SecurityPolicy::paused_until_unix_secs's own doc
+        // comment for why this is a timestamp, not a bool. Present only
+        // while an actual pause is in its window (`filter(|&secs| secs > 0)`
+        // below), so the console can treat "field missing/null" as "not
+        // paused" without special-casing an expired-but-still-set timestamp.
+        "paused_seconds_remaining": policy.security.paused_until_unix_secs.map(|until| {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            (until - now).max(0)
+        }).filter(|&secs| secs > 0),
     }))
 }
 
@@ -2217,6 +2230,60 @@ mod tests {
 
         let after: PolicyConfig = client.get(format!("http://{addr}/ui/policy")).send().await.unwrap().json().await.unwrap();
         assert_eq!(after.applications.len(), 1, "the edited policy applied via /ui/policy must actually take effect on this Agent");
+    }
+
+    #[tokio::test]
+    async fn pause_protection_button_allows_then_resume_blocks_again_over_real_http() {
+        // 2026-09-04: end-to-end proof of the console's "Pause protection"
+        // button, exercised the same way the real page does it -- GET the
+        // current policy, set only security.paused_until_unix_secs, POST it
+        // back to the existing /ui/policy endpoint (no dedicated pause
+        // endpoint exists, by design) -- then confirms the pause is actually
+        // load-bearing on /ui/inspect (what the browser extension's real
+        // request path ultimately reaches) and that /ui/status's
+        // paused_seconds_remaining is what the console's countdown banner
+        // reads. Matches this project's standing rule: prove the real
+        // HTTP-facing behavior, not just an internal Inspector/PolicyEngine
+        // unit test.
+        let addr = spawn_test_server().await;
+        let client = reqwest::Client::new();
+        let secret_body = serde_json::json!({ "text": "my key is AKIAIOSFODNN7EXAMPLE" });
+
+        // Baseline: unpaused, a real secret is redacted as normal.
+        let baseline: ScanResult = client.post(format!("http://{addr}/ui/inspect")).json(&secret_body).send().await.unwrap().json().await.unwrap();
+        assert!(!baseline.findings.is_empty(), "sanity: this Agent must actually detect the secret before pausing it");
+
+        let status: serde_json::Value = client.get(format!("http://{addr}/ui/status")).send().await.unwrap().json().await.unwrap();
+        assert!(status.get("paused_seconds_remaining").is_none() || status["paused_seconds_remaining"].is_null(), "a fresh Agent must not report itself paused");
+
+        // Press "Pause 15 minutes": GET, set the one field, POST -- exactly
+        // what setPause() in console.html does.
+        let mut policy: PolicyConfig = client.get(format!("http://{addr}/ui/policy")).send().await.unwrap().json().await.unwrap();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        policy.security.paused_until_unix_secs = Some(now + 900);
+        let apply_resp = client.post(format!("http://{addr}/ui/policy")).json(&policy).send().await.unwrap();
+        assert_eq!(apply_resp.status(), 200);
+
+        // The countdown banner's data source.
+        let paused_status: serde_json::Value = client.get(format!("http://{addr}/ui/status")).send().await.unwrap().json().await.unwrap();
+        let remaining = paused_status["paused_seconds_remaining"].as_i64().expect("must report a concrete remaining-seconds count while paused");
+        assert!(remaining > 0 && remaining <= 900, "expected roughly 900s remaining, got {remaining}");
+
+        // The actual protection effect: the same secret now sails through.
+        let while_paused: ScanResult = client.post(format!("http://{addr}/ui/inspect")).json(&secret_body).send().await.unwrap().json().await.unwrap();
+        assert_eq!(while_paused.action, Action::Allow);
+        assert!(while_paused.findings.is_empty());
+
+        // Press "Resume now": same GET/set/POST shape, clearing the field.
+        let mut policy: PolicyConfig = client.get(format!("http://{addr}/ui/policy")).send().await.unwrap().json().await.unwrap();
+        policy.security.paused_until_unix_secs = None;
+        client.post(format!("http://{addr}/ui/policy")).json(&policy).send().await.unwrap();
+
+        let resumed_status: serde_json::Value = client.get(format!("http://{addr}/ui/status")).send().await.unwrap().json().await.unwrap();
+        assert!(resumed_status.get("paused_seconds_remaining").is_none() || resumed_status["paused_seconds_remaining"].is_null());
+
+        let after_resume: ScanResult = client.post(format!("http://{addr}/ui/inspect")).json(&secret_body).send().await.unwrap().json().await.unwrap();
+        assert!(!after_resume.findings.is_empty(), "resuming must bring back real detection, not leave it paused");
     }
 
     #[tokio::test]

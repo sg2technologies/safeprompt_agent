@@ -138,10 +138,45 @@ pub struct SecurityPolicy {
     /// with just a flag can set this to `Warn`/`Audit` instead.
     #[serde(default = "default_unmaskable_file_action")]
     pub unmaskable_file_action: Action,
+    /// 2026-09-04: a real, live user request for a genuinely simple "just
+    /// let me send this one file, I know what's in it" lever -- the
+    /// existing per-category checkbox+dropdown model (turn off/reconfigure
+    /// PII, then remember to turn it back on) was confirmed live to be
+    /// too many steps and too easy to leave in the wrong state for
+    /// someone who isn't already fluent in this policy's own vocabulary.
+    ///
+    /// A Unix timestamp (seconds), not a bool -- modeled on how consumer
+    /// antivirus products offer "pause protection for 15 min / 1 hour,"
+    /// not an indefinite off-switch, specifically so forgetting to turn
+    /// it back on doesn't leave a device permanently unprotected. `None`
+    /// or a value at/before now means not paused. Deliberately bypasses
+    /// detection/redaction only (`Inspector::inspect`/`inspect_response`)
+    /// -- NOT `upload_action`'s per-extension allow/block list, which is
+    /// a structural "never allow .exe uploads" type decision this pause
+    /// has no business touching.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paused_until_unix_secs: Option<i64>,
 }
 
 fn default_unmaskable_file_action() -> Action {
     Action::Block
+}
+
+impl SecurityPolicy {
+    /// True while a pause set via `paused_until_unix_secs` is still in its
+    /// window. Reads real wall-clock time (`SystemTime::now`), not a
+    /// caller-supplied "now" -- this is a real, external pause a human set
+    /// from the console, not something a test needs to freeze/control
+    /// (existing tests that care about determinism don't set this field at
+    /// all, so it stays `None` -- not paused -- for every one of them).
+    pub fn is_paused(&self) -> bool {
+        let Some(until) = self.paused_until_unix_secs else { return false };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        now < until
+    }
 }
 
 fn default_detectors() -> HashMap<FindingCategory, bool> {
@@ -192,6 +227,7 @@ impl Default for SecurityPolicy {
             detectors: default_detectors(),
             actions: default_actions(),
             unmaskable_file_action: default_unmaskable_file_action(),
+            paused_until_unix_secs: None,
         }
     }
 }
@@ -577,6 +613,32 @@ mod tests {
     fn no_findings_allows() {
         let engine = PolicyEngine::default();
         assert_eq!(engine.evaluate(&[]), Action::Allow);
+    }
+
+    fn now_unix_secs() -> i64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0)
+    }
+
+    #[test]
+    fn security_policy_defaults_to_not_paused() {
+        assert!(!SecurityPolicy::default().is_paused());
+    }
+
+    #[test]
+    fn security_policy_is_paused_while_the_timestamp_is_in_the_future() {
+        let mut policy = SecurityPolicy::default();
+        policy.paused_until_unix_secs = Some(now_unix_secs() + 900);
+        assert!(policy.is_paused());
+    }
+
+    #[test]
+    fn security_policy_is_not_paused_once_the_timestamp_is_in_the_past() {
+        let mut policy = SecurityPolicy::default();
+        policy.paused_until_unix_secs = Some(now_unix_secs() - 1);
+        assert!(!policy.is_paused());
     }
 
     #[test]

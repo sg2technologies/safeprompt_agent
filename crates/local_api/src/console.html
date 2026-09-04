@@ -137,6 +137,17 @@
   .pol-adv { margin-top: 22px; }
   .pol-adv summary { cursor: pointer; color: #6b7688; font-size: 13px; }
   .pol-adv textarea { margin-top: 8px; }
+  .pol-pause {
+    border: 1px solid #e2e5ea; border-radius: 8px; padding: 14px 16px; margin: 4px 0 18px; background: #fafbfc;
+  }
+  .pol-pause #pause-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+  .pol-pause #pause-controls p.hint { flex-basis: 100%; }
+  #pause-banner {
+    padding: 10px 14px; margin-bottom: 12px; border-radius: 6px;
+    background: #fff8e6; border: 1px solid #f2d98d; color: #6b4e00;
+    font-size: 13px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+  #pause-banner strong { font-size: 14px; }
 </style>
 </head>
 <body>
@@ -205,6 +216,16 @@
     <h2>Policy</h2>
     <p class="hint">Turn detection on or off and choose what happens when something is found. Changes apply to this Agent immediately. If central policy sync is enabled, a synced update can overwrite a local edit within its sync interval.</p>
     <div class="result" id="policy-result"></div>
+
+    <div class="pol-pause" id="pol-pause-box">
+      <div id="pause-banner" hidden></div>
+      <div id="pause-controls">
+        <p class="hint" style="margin-top:0">Need to send or upload something just this once that would normally get blocked or redacted? Pause protection for a bit instead of changing the settings below — it turns everything back on by itself, so there's nothing to remember.</p>
+        <button class="secondary" type="button" data-pause-minutes="15">Pause 15 minutes</button>
+        <button class="secondary" type="button" data-pause-minutes="60">Pause 1 hour</button>
+        <button class="secondary" type="button" data-pause-minutes="240">Pause 4 hours</button>
+      </div>
+    </div>
 
     <h3 class="pol-h">Detection</h3>
     <div id="policy-detectors"><p class="hint">Loading…</p></div>
@@ -500,8 +521,95 @@ async function loadPolicy() {
   } catch (e) {
     $('#policy-detectors').innerHTML = `<div class="msg err">${escapeHtml(String(e))}</div>`;
   }
+  refreshPauseState();
 }
 $('#btn-reload-policy').addEventListener('click', loadPolicy);
+
+// "Pause protection" -- a single, auto-expiring off-switch for the whole
+// Policy tab's worth of per-category settings, for the person this page's
+// checkboxes/dropdowns are genuinely too much for. It only ever sets/clears
+// security.paused_until_unix_secs through the existing /ui/policy endpoint
+// (Inspector::is_paused() on the Rust side short-circuits every inspect call
+// to Allow/no-findings while that timestamp is in the future) -- it never
+// touches detectors/actions/applications, so whatever's configured below is
+// exactly what comes back once the pause ends, nothing to remember to redo.
+// Auto-expiring (15 min / 1 hour / 4 hours, no indefinite option) is
+// deliberate: the same reasoning consumer antivirus products use for their
+// own "pause protection" button -- an indefinite off-switch is the one a
+// real person forgets they left on.
+let pauseTickTimer = null;
+
+function renderPauseBanner(secsRemaining) {
+  const banner = $('#pause-banner');
+  const controls = $('#pause-controls');
+  if (pauseTickTimer) { clearInterval(pauseTickTimer); pauseTickTimer = null; }
+  if (!secsRemaining || secsRemaining <= 0) {
+    banner.hidden = true;
+    banner.innerHTML = '';
+    controls.hidden = false;
+    return;
+  }
+  controls.hidden = true;
+  let remaining = secsRemaining;
+  const paint = () => {
+    const m = Math.floor(remaining / 60), s = remaining % 60;
+    banner.innerHTML = `<span>⏸ <strong>Protection paused</strong> — everything is being allowed through. Resumes automatically in ${m}:${String(s).padStart(2, '0')}.</span>`
+      + '<button class="secondary" type="button" id="btn-resume-now">Resume now</button>';
+    $('#btn-resume-now').addEventListener('click', resumeProtection);
+  };
+  banner.hidden = false;
+  paint();
+  pauseTickTimer = setInterval(() => {
+    remaining -= 1;
+    if (remaining <= 0) { clearInterval(pauseTickTimer); pauseTickTimer = null; refreshPauseState(); return; }
+    paint();
+  }, 1000);
+}
+
+async function refreshPauseState() {
+  try {
+    const resp = await fetch('/ui/status');
+    const s = await resp.json();
+    renderPauseBanner(s.paused_seconds_remaining || 0);
+  } catch (e) {
+    // Leave whatever was already shown -- a transient /ui/status failure
+    // here shouldn't flip a real pause banner off.
+  }
+}
+
+async function setPause(minutes) {
+  $('#policy-result').innerHTML = '';
+  try {
+    // Fetch fresh rather than reusing currentPolicy/any in-progress edits in
+    // the detector checkboxes below -- Pause is meant to be its own,
+    // independent action, not a way to accidentally also save unrelated
+    // pending changes someone was mid-way through making.
+    const resp = await fetch('/ui/policy');
+    const policy = await resp.json();
+    policy.security = policy.security || {};
+    policy.security.paused_until_unix_secs = Math.floor(Date.now() / 1000) + minutes * 60;
+    await postPolicy(policy);
+    refreshPauseState();
+  } catch (e) {
+    $('#policy-result').innerHTML = `<div class="msg err">${escapeHtml(String(e))}</div>`;
+  }
+}
+
+async function resumeProtection() {
+  try {
+    const resp = await fetch('/ui/policy');
+    const policy = await resp.json();
+    policy.security = policy.security || {};
+    policy.security.paused_until_unix_secs = null;
+    await postPolicy(policy);
+    refreshPauseState();
+  } catch (e) {
+    $('#policy-result').innerHTML = `<div class="msg err">${escapeHtml(String(e))}</div>`;
+  }
+}
+
+$('#pause-controls').querySelectorAll('button[data-pause-minutes]').forEach(btn =>
+  btn.addEventListener('click', () => setPause(Number(btn.dataset.pauseMinutes))));
 
 // Populate the "add keyword" action dropdown once.
 $('#kw-new-action').innerHTML = POLICY_ACTIONS.map(a =>

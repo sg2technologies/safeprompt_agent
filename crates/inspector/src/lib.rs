@@ -426,9 +426,27 @@ impl Inspector {
 
     pub fn inspect(&self, prompt_text: &str) -> ScanResult {
         let policy = self.policy.read().expect("policy lock poisoned");
+        if policy.config().security.is_paused() {
+            return Self::paused_result(prompt_text);
+        }
         let findings = self.collect_request_findings(prompt_text, &policy);
         let action = policy.evaluate(&findings);
         Self::finish_request_scan(prompt_text, findings, action)
+    }
+
+    /// 2026-09-04: a paused Agent (see `SecurityPolicy::is_paused`'s own
+    /// doc comment) skips detection entirely rather than running it and
+    /// discarding the result -- cheaper, and it means a paused window
+    /// genuinely never sees the sensitive content pass through any
+    /// scanner, not just "scanned but the verdict was overridden."
+    fn paused_result(text: &str) -> ScanResult {
+        ScanResult {
+            action: Action::Allow,
+            findings: Vec::new(),
+            original_prompt: text.to_string(),
+            sanitized_prompt: text.to_string(),
+            unmaskable_reason: None,
+        }
     }
 
     /// SP-RISK-003: same detection as `inspect`, but runs the full
@@ -441,6 +459,10 @@ impl Inspector {
     /// trail, a future UI panel) that wants to show *why*.
     pub fn inspect_with_context(&self, prompt_text: &str, context: &RiskContext) -> (ScanResult, PolicyDecision) {
         let policy = self.policy.read().expect("policy lock poisoned");
+        if policy.config().security.is_paused() {
+            let decision = PolicyDecision { action: Action::Allow, risk: safeprompt_risk::RiskScore { total: 0, band: safeprompt_risk::RiskBand::Low, signals: Vec::new() }, matched_rules: Vec::new() };
+            return (Self::paused_result(prompt_text), decision);
+        }
         let findings = self.collect_request_findings(prompt_text, &policy);
         let decision = policy.evaluate_with_context(&findings, context);
         (Self::finish_request_scan(prompt_text, findings, decision.action), decision)
@@ -479,6 +501,9 @@ impl Inspector {
             return ScanResult { action: Action::Allow, findings: Vec::new(), original_prompt: response_text.to_string(), sanitized_prompt: response_text.to_string(), unmaskable_reason: None };
         }
         let policy = self.policy.read().expect("policy lock poisoned");
+        if policy.config().security.is_paused() {
+            return Self::paused_result(response_text);
+        }
         let findings = self.collect_response_findings(response_text, &policy);
         let action = policy.evaluate(&findings);
         Self::finish_response_scan(response_text, findings, action)
@@ -495,6 +520,10 @@ impl Inspector {
             return (scan, decision);
         }
         let policy = self.policy.read().expect("policy lock poisoned");
+        if policy.config().security.is_paused() {
+            let decision = PolicyDecision { action: Action::Allow, risk: safeprompt_risk::RiskScore { total: 0, band: safeprompt_risk::RiskBand::Low, signals: Vec::new() }, matched_rules: Vec::new() };
+            return (Self::paused_result(response_text), decision);
+        }
         let findings = self.collect_response_findings(response_text, &policy);
         let decision = policy.evaluate_with_context(&findings, context);
         (Self::finish_response_scan(response_text, findings, decision.action), decision)
@@ -528,6 +557,59 @@ mod tests {
 
     fn keyword_policy(rules: Vec<CustomKeywordRule>) -> PolicyConfig {
         PolicyConfig { custom_keywords: rules, ..PolicyConfig::default() }
+    }
+
+    fn now_unix_secs() -> i64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0)
+    }
+
+    #[test]
+    fn a_pause_lets_a_real_secret_through_on_every_inspect_entry_point() {
+        // 2026-09-04: the "Pause protection" one-button console feature --
+        // proves the pause is actually load-bearing (not just present on
+        // SecurityPolicy but never wired up) across all four public scan
+        // methods, using a real finding (the same AWS key string the
+        // ordinary redaction test above uses) that would otherwise be
+        // Redact, not Allow.
+        let inspector = Inspector::default();
+        let mut config = PolicyConfig::default();
+        config.security.paused_until_unix_secs = Some(now_unix_secs() + 900);
+        inspector.update_policy(config);
+
+        let secret = "Secret key AKIAIOSFODNN7EXAMPLE";
+        let result = inspector.inspect(secret);
+        assert_eq!(result.action, Action::Allow);
+        assert!(result.findings.is_empty());
+        assert_eq!(result.sanitized_prompt, secret, "paused means untouched, not silently redacted");
+
+        let (with_context, decision) = inspector.inspect_with_context(secret, &safeprompt_risk::RiskContext::default());
+        assert_eq!(with_context.action, Action::Allow);
+        assert_eq!(decision.action, Action::Allow);
+
+        let response = inspector.inspect_response(secret);
+        assert_eq!(response.action, Action::Allow);
+        assert!(response.findings.is_empty());
+
+        let (response_with_context, response_decision) = inspector.inspect_response_with_context(secret, &safeprompt_risk::RiskContext::default());
+        assert_eq!(response_with_context.action, Action::Allow);
+        assert_eq!(response_decision.action, Action::Allow);
+    }
+
+    #[test]
+    fn a_pause_timestamp_in_the_past_does_not_pause_anything() {
+        // The "Resume now" console button, and a pause that simply expired,
+        // both look like this: a stale/past paused_until_unix_secs must
+        // behave exactly like `None` -- ordinary detection runs.
+        let inspector = Inspector::default();
+        let mut config = PolicyConfig::default();
+        config.security.paused_until_unix_secs = Some(now_unix_secs() - 1);
+        inspector.update_policy(config);
+
+        let result = inspector.inspect("Secret key AKIAIOSFODNN7EXAMPLE");
+        assert_eq!(result.action, Action::Redact);
     }
 
     #[test]
