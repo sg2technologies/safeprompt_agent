@@ -213,8 +213,28 @@ impl PiiScanner {
             // country's passport-number shape at all, unlike every pattern
             // above. `(?m)` so `^`/`$` anchor to each line rather than the
             // whole (possibly multi-line) scanned text.
+            //
+            // 2026-09-04: line 1's trailing name-padding run was originally
+            // pinned to an EXACT 39 characters (5 fixed chars + 39 = 44).
+            // A real-machine sample sweep against 10 genuine passport-photo
+            // OCR outputs (`sample_directory_sweep`, safeprompt-local-api)
+            // found this exact-length requirement was THE reason 3 of them
+            // (Australia, South Africa, Finland) produced zero findings at
+            // all -- real OCR reliably drops or adds 1-3 `<` characters
+            // from a long run of identical fill characters (a well-known
+            // OCR failure mode against repeated glyphs), so line 1 came
+            // back 41-43 chars instead of 44. Line 2 -- the line that
+            // actually carries the checksums -- was unaffected in every one
+            // of those samples and validated correctly once line 1 stopped
+            // rejecting the whole match outright. Widened to a tolerant
+            // range (30-42) instead of an exact count: this does NOT weaken
+            // the anti-false-positive posture at all, since line 2's
+            // `mrz_line2_checksums_valid` check below (unchanged, still a
+            // real ICAO checksum, not a shape match) is what actually gates
+            // the finding -- this range only stops line 1's un-checksummed
+            // decorative padding from vetoing a checksum-valid line 2.
             mrz_regex: Regex::new(
-                r"(?m)^(P[A-Z<][A-Z]{3}[A-Z<]{39})\r?\n([A-Z0-9<]{9}[0-9][A-Z<]{3}[0-9]{6}[0-9][MFX<][0-9]{6}[0-9][A-Z0-9<]{14}[0-9<][0-9])$",
+                r"(?m)^(P[A-Z<][A-Z]{3}[A-Z<]{30,42})\r?\n([A-Z0-9<]{9}[0-9][A-Z<]{3}[0-9]{6}[0-9][MFX<][0-9]{6}[0-9][A-Z0-9<]{14}[0-9<][0-9])$",
             )
             .unwrap(),
             // GSTIN (Indian GST registration number): 2-digit state code +
@@ -773,6 +793,12 @@ const PASSPORT_CONTEXT_KEYWORDS: &[&str] = &[
     "passport id",
     "travel document",
     "document number",
+    // 2026-09-04: found via the real-OCR sample sweep -- an actual
+    // Australian passport prints "DOCUMENT NO." (abbreviated, not
+    // "document number"), so the visible passport-number field next to
+    // it never matched any existing keyword. "document number" above is
+    // kept too since it's still a real label some documents use in full.
+    "document no",
     "passport details",
     "passport",
 ];
@@ -915,6 +941,38 @@ fn mrz_line2_checksums_valid(line2: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Real, verbatim OCR output from `sample_directory_sweep`
+    /// (safeprompt-local-api) against genuine sample passport images --
+    /// the regression cases behind the 2026-09-04 MRZ line-1 length-range
+    /// fix. Kept as a shared helper, not one string per test, since all
+    /// three regression tests below scan the same three samples.
+    fn real_ocr_passport_samples() -> [(&'static str, &'static str); 3] {
+        [
+            ("AusPassport", "FO\nAUSTRALIA\nPASSPORT\nDOCUMENT NO.\nSPECIMEN\nType / Tyse\nCode of issuing I Code ode IEat\nSatadn\nAUS\ndctr\nPA0940443\nP\nMerse/ Mom\nSPECIMEN\nCITIZEN\nJANE\nNatonalily I N\nAUSTRALIAN\nDutaoin iCada\nSM\n07 JUN 1984\nSeo I Sare\nPace of birty / Lles de reosone\nF\nCANBERRA\nDate of Ioue / Dale de SNiveese\nHolder's signetkure / Sigsatu dis sislsies\n01 MAR 2014\nDame of expiry 1 Dats chexparedi\ngane Citizen\n01 MAR 2024\nAulharty JAutonte\nAUSTRALIA\nP<AUSCITIZEN<<ANE<<<<<<<<<<<<<<<<<<<<<<<<<<\nPA09404433AUS8406077F1903212<17332717P<<<<68"),
+            ("SouthAfrica", "Passport / Passeport\nPM \nREPUBLIC OF SOUTH AFRICA/REPUBLIQUE D'AFRIQUE DU CG\nZAF\nCanty sade/Clade dapaya\nMO0000001\nSPECIMEN\nJANE\nSOUTH AFRICAN\n / SUD-AFRICAINE\n01 JAN 1980\n8001014999082\nZAFSA\n12120\nF\nSou / Sen\nZAF\nPlec of t\n30 MAR 2009\nDEPT OF HOME AFFAIRS\n29 MAR 2019\nJ.Specimew\nPMZAFSPECMEN<<ANE<<<<<<<<<<<<<<<<<<<<<<<<\nM000000015ZAF8001014F19032908001014999082<30"),
+            ("Finland", "t\nP..\nL9s1021:\n29272243\n1..\nPFALLUDAAORS\nSUOMI: FINLAND: FINLAND : FINLANDE\nP\nFIN\nXP1234567\nVirtanen\nMaria Olivia\nS\nSuoms Finland Finlan Finlande\n21.12.1971\nKO\n-426U\nn\nRovaniemi\nS\n22.08.2012\nMania Virtanen\nPolisen/Villmanstrand\nP<FINVIRTANEN<<MARIA<OLIVIA<<<<<<<<<<<<<<<<\nXP12345674FIN7112214F1708222211271<426U<<<08"),
+        ]
+    }
+
+    #[test]
+    fn test_mrz_detects_real_ocr_noisy_passports() {
+        // 2026-09-04 regression test: before the line-1 length-range fix,
+        // every one of these three real OCR outputs produced ZERO findings
+        // -- not because line 2's checksum was wrong (it wasn't, on any of
+        // the three), but because OCR reliably drops 1-3 `<` characters
+        // from line 1's long fill-character run, and the old regex required
+        // line 1 to be an exact 44 chars or the whole two-line match failed
+        // outright. See mrz_regex's own doc comment for the full story.
+        let scanner = PiiScanner::new();
+        for (name, text) in real_ocr_passport_samples() {
+            let findings = scanner.scan(text);
+            assert!(
+                findings.iter().any(|f| f.match_name == "PASSPORT_MRZ"),
+                "{name}: expected a PASSPORT_MRZ finding on real noisy OCR output, got {findings:?}"
+            );
+        }
+    }
 
     #[test]
     fn test_email_and_pan_detection() {
