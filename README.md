@@ -16,6 +16,7 @@ This repository is the **Community edition**: the Rust Agent (`agent/` at the re
 - **File & image scanning** — `.txt`, `.docx`, `.pdf`, and scanned/photographed documents via on-device OCR
 - **In-place masking** — plain-text file uploads (`.txt`, `.csv`, `.json`, `.md`, `.log`, `.yaml`, `.xml`, `.html`) are redacted and still sent, instead of being blocked outright
 - **Configurable policy** — turn detectors on or off, choose Allow / Warn / Mask / Block / Require-approval per category
+- **Pause protection** — a one-button, auto-expiring pause (15 min / 1 hour / 4 hours) for the rare "let me send this one thing" case, instead of hand-editing per-category settings and having to remember to revert them
 - **Local console** — a browser-based dashboard at `http://127.0.0.1:8847`, reachable only from your own machine, with live policy editing, a message tester, and an activity log
 - **Local audit log** — every scan decision recorded on-device; nothing leaves the machine unless you explicitly enable it
 - **Browser extension integration** — works alongside the SafePrompt browser extension to cover chat prompts and uploads directly on AI sites
@@ -66,13 +67,24 @@ Before relying on it, confirm the Agent is actually detecting things:
 
 If step 3 doesn't flag the test secret, check the Policy tab before anything else — a detector toggled off, or a category set to Allow, means exactly that.
 
+What step 4 looks like when it's actually working — the browser extension intercepting a synthetic AWS key and a synthetic password before either one reaches ChatGPT:
+
+<img src="docs/images/verify-secret-redacted.png" alt="ChatGPT prompt showing a synthetic AWS key replaced with [REDACTED_AWS_KEY] before sending, with a SafePrompt toast confirming the redaction" width="600">
+<img src="docs/images/verify-password-redacted.png" alt="ChatGPT prompt showing a synthetic password replaced with [REDACTED_PASSWORD] before sending, with a SafePrompt toast confirming the redaction" width="600">
+
+(Both values above are made-up test data, not real credentials.)
+
 ## Using it with your browser
 
-The extension (`browser-extension/` in this repo) is what actually sees your prompts and file uploads on ChatGPT, Claude, Gemini, and Copilot, and sends them to the Agent above to be scanned before they leave your machine.
+The extension (`browser-extension/` in this repo) is what actually sees your prompts and file uploads on ChatGPT, Claude, Gemini, and Copilot, and sends them to the Agent above to be scanned before they leave your machine. Once it's set up, the local console's **Browser extension** tab looks like this:
+
+<img src="docs/images/browser-extension-tab.png" alt="SafePrompt local console's Browser extension tab, showing it detected and checking in, plus the Load unpacked install steps" width="700">
 
 1. Open `chrome://extensions` (or `edge://extensions`) and turn on **Developer mode**.
 2. Click **Load unpacked** and select this repo's `browser-extension/` folder directly — no build step needed.
-3. Chrome assigns the unpacked extension a local extension ID (derived from how it was loaded, not something SafePrompt controls) — copy it from the extension's card.
+3. Chrome assigns the unpacked extension a local extension ID (derived from how it was loaded, not something SafePrompt controls) — copy it from the extension's card:
+
+   <img src="docs/images/chrome-extension-id.png" alt="Chrome extensions page for SafePrompt, with the extension ID field circled" width="700">
 4. **Configure the extension origin — do not skip this step.** The Agent only accepts requests from an extension origin it recognizes, and by default that's SG2's own official build's ID, not yours. Start the Agent with your ID set instead:
 
    ```bash
@@ -95,7 +107,9 @@ To produce a stable ID and a real, installable `.crx` instead (e.g. for your own
 
 ## Configuring policy
 
-Everything is controlled from the local console's **Policy** tab, or by editing the underlying JSON policy document directly — no cloud account required to change what's detected or how it's handled.
+Everything is controlled from the local console's **Policy** tab, or by editing the underlying JSON policy document directly — no cloud account required to change what's detected or how it's handled. The **Pause protection** buttons at the top handle the "just this once" case without touching the detector settings below them:
+
+<img src="docs/images/pause-protection.png" alt="SafePrompt local console's Policy tab, showing Pause 15 minutes / 1 hour / 4 hours buttons above the per-category detector toggles" width="700">
 
 ## OCR support
 
