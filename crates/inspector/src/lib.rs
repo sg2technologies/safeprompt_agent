@@ -431,6 +431,11 @@ impl Inspector {
         }
         let findings = self.collect_request_findings(prompt_text, &policy);
         let action = policy.evaluate(&findings);
+        // See PolicyEngine::active_findings's own doc comment: a disabled
+        // category must have zero footprint on the reported findings or
+        // the redacted text, even when some other, still-enabled category
+        // in the same message drove `action` to Redact.
+        let findings = policy.active_findings(findings);
         Self::finish_request_scan(prompt_text, findings, action)
     }
 
@@ -465,6 +470,7 @@ impl Inspector {
         }
         let findings = self.collect_request_findings(prompt_text, &policy);
         let decision = policy.evaluate_with_context(&findings, context);
+        let findings = policy.active_findings(findings);
         (Self::finish_request_scan(prompt_text, findings, decision.action), decision)
     }
 
@@ -506,6 +512,7 @@ impl Inspector {
         }
         let findings = self.collect_response_findings(response_text, &policy);
         let action = policy.evaluate(&findings);
+        let findings = policy.active_findings(findings);
         Self::finish_response_scan(response_text, findings, action)
     }
 
@@ -526,6 +533,7 @@ impl Inspector {
         }
         let findings = self.collect_response_findings(response_text, &policy);
         let decision = policy.evaluate_with_context(&findings, context);
+        let findings = policy.active_findings(findings);
         (Self::finish_response_scan(response_text, findings, decision.action), decision)
     }
 
@@ -544,6 +552,35 @@ impl Inspector {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_disabled_detector_category_is_not_redacted_just_because_another_category_also_fired() {
+        // 2026-09-04: real, live-reported bug -- a user turned Pii off
+        // (their exact words: "i have disabled PII... why it is not
+        // allowing"), applied it, then uploaded a file containing both an
+        // AWS key (Secret, still enabled+Redact) and their email address
+        // (Pii, disabled). The email got masked anyway. Root cause:
+        // category_action() already skips a disabled category's findings
+        // when computing the overall Action, but finish_request_scan()
+        // was handed the SAME unfiltered findings list regardless -- once
+        // ANY enabled category (here, Secret) pushed the overall verdict
+        // to Redact, apply_redactions() blindly substituted every finding
+        // in that list, disabled category or not.
+        let mut config = PolicyConfig::default();
+        config.security.detectors.insert(FindingCategory::Pii, false);
+        let inspector = Inspector::new(config);
+
+        let text = "Secret key AKIAIOSFODNN7EXAMPLE and my email is jane@example.com";
+        let result = inspector.inspect(text);
+
+        assert_eq!(result.action, Action::Redact, "the still-enabled Secret finding must still drive the overall verdict");
+        assert!(result.sanitized_prompt.contains("jane@example.com"), "a disabled category's content must survive untouched: {}", result.sanitized_prompt);
+        assert!(!result.sanitized_prompt.contains("AKIAIOSFODNN7EXAMPLE"), "the still-enabled Secret finding must still actually be redacted");
+        assert!(
+            !result.findings.iter().any(|f| f.category == FindingCategory::Pii),
+            "a disabled category must not even appear in the reported findings"
+        );
+    }
 
     #[test]
     fn test_inspector_secret_redaction() {

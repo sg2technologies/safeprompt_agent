@@ -471,6 +471,29 @@ impl PolicyEngine {
 
         worst
     }
+
+    /// 2026-09-04: a real, live-reported bug -- `category_action` above
+    /// already skips a disabled category's findings when computing the
+    /// overall `Action` ("Worst-of across every *active* (detector-enabled)
+    /// finding", per its own doc comment), but a caller building the final
+    /// `ScanResult` (redacted text + reported findings) from the SAME
+    /// unfiltered findings list this was called on has no way to know
+    /// which ones those were. A user who disabled Pii still had their
+    /// email address masked, because an unrelated still-enabled category
+    /// (Secret) in the same message drove the overall verdict to Redact,
+    /// and the redaction step then blindly substituted every finding it
+    /// was given -- disabled category or not.
+    ///
+    /// Callers (`safeprompt-inspector`) must run findings through this
+    /// before they become part of a `ScanResult` -- a category the tenant
+    /// switched off must have zero footprint on the output, not just on
+    /// the action it independently would have triggered. Shares the exact
+    /// "is this category active" predicate `category_action` uses, so the
+    /// two can never silently drift apart.
+    pub fn active_findings(&self, findings: Vec<Finding>) -> Vec<Finding> {
+        let sec = &self.config.security;
+        findings.into_iter().filter(|f| *sec.detectors.get(&f.category).unwrap_or(&true)).collect()
+    }
 }
 
 // ── Compliance packs ────────────────────────────────────────────────────────
