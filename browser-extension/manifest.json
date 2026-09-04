@@ -3,7 +3,6 @@
   "name": "SafePrompt — AI Security Gateway",
   "version": "1.0.0",
   "description": "Inspects and protects every prompt and AI response in your browser -- secrets, PII, and prompt injection -- before anything leaves the page. Not just DLP: full AI Security Gateway coverage for ChatGPT, Claude, Gemini, Perplexity, and Grok.",
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoF0tYbGDPZ69aGx9KQWYmw2ncCf5WTm2ax3+IaZJ1ShnpQJLa0MqsyojG68f3aJ+IpHL+wTtUL6gha4BouQc13bQS3bfV25pHdcfs4nLMNN2XeEIAuWlSMWdy+BJO9asN/DD6PgOhlHxXlz19ABBjskulEfviVlYPenvvmiHT+rjGWKrH7r/mh/jTKOO52EJzSJ9lRaVFOj4X070va7EWynC4foFQ63PRP+Lpe+EQfGtwtyT8X3XI6tszOOS5XlDARtaQFPbit1PyQGDc6CM4bwKX5ae2HlRuA4AN3VpesHRLvcGTAtPJ7ypAhzayQvsDgWUfSgm07Vuu80RBRe78QIDAQAB",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
