@@ -248,7 +248,7 @@
       <li>Open <code>chrome://extensions</code> (or <code>edge://extensions</code>) in a new tab</li>
       <li>Turn on <strong>Developer mode</strong> (top-right toggle)</li>
       <li>Click <strong>Load unpacked</strong></li>
-      <li>Select this folder:<br><code id="ext-folder-path">C:\Program Files\SafePrompt\extension\unpacked</code><button class="tiny" id="btn-copy-ext-path" type="button">Copy path</button></li>
+      <li>Select this folder<span id="ext-folder-reason"></span>:<br><code id="ext-folder-path">C:\Program Files\SafePrompt\extension\unpacked</code><button class="tiny" id="btn-copy-ext-path" type="button">Copy path</button></li>
       <li>Reload this page — the status above should turn to <strong>detected</strong> within a minute or two</li>
     </ol>
     <p class="hint">On Chrome/Edge the extension talks to this agent automatically. Nothing else to configure.</p>
@@ -698,6 +698,25 @@ async function loadExtension() {
       out.innerHTML = `<div class="msg ok">✓ Extension detected and checking in${suffix}. Browser coverage is active.</div>`;
     } else {
       out.innerHTML = '<div class="msg err">Extension not detected yet. Follow the steps below, then reload this page.</div>';
+    }
+    // 2026-09-04: this used to be a hardcoded C:\Program Files\SafePrompt\...
+    // path baked into the static HTML below -- correct for an installed
+    // build, flatly wrong for a from-source build (the folder doesn't
+    // exist there at all; the real extension source sits at the repo
+    // root's browser-extension\). The backend now computes the right one
+    // for however THIS binary is actually running (see
+    // resolve_extension_folder_path's own doc comment), AND says which
+    // case it detected -- a bare path with no context leaves even a
+    // developer unsure whether it's correct or a bug; saying *why*
+    // ("because you built this from source") is what actually resolves
+    // that. Falls back to the static HTML's already-installed-path
+    // default, with no reason text, only if neither shape was found.
+    if (s.extension_folder_path) {
+      $('#ext-folder-path').textContent = s.extension_folder_path;
+      const reasons = { installed: ' (this machine has an installed copy)', source: ' (this is a from-source build)' };
+      $('#ext-folder-reason').textContent = reasons[s.extension_folder_kind] || '';
+    } else if (s.extension_folder_path === null) {
+      $('#ext-folder-path').textContent = 'Could not auto-detect — if you installed via MSI, use C:\\Program Files\\SafePrompt\\extension\\unpacked; if you built from source, use this repo\'s browser-extension\\ folder directly.';
     }
   } catch (e) {
     out.innerHTML = `<div class="msg err">${escapeHtml(String(e))}</div>`;

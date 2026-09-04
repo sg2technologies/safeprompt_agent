@@ -44,6 +44,8 @@ Run it:
 
 Then open **http://127.0.0.1:8847** in your browser for the local console — no account or sign-in needed.
 
+> **Windows Firewall**: the first time you run it, Windows will likely show a "Windows Defender Firewall has blocked some features of this app" prompt — this is normal for any freshly built, unsigned binary that opens a listening socket, not something specific to SafePrompt. Everything the local console and browser extension need (the local API, the reverse proxy) binds to `127.0.0.1` only, so it's reachable from this machine regardless of what you click. It's safe to click **Cancel**/dismiss the prompt if you only need local use; click **Allow access** (and consider limiting it to **Private networks**) only if you're deliberately running a role that needs to be reachable from other devices, like Tenant SPOC.
+
 > On-device OCR (image and scanned-PDF scanning) needs two additional runtime libraries — `onnxruntime` and `pdfium` — placed next to the built binary. See `crates/ocr`'s documentation for download links; everything else works out of the box.
 
 > **macOS note**: `platform/macos` (system-proxy auto-configuration) is currently a stub — it compiles but doesn't actually route traffic through the Agent yet. The detection engine, local console, and browser-extension integration below all work; only that one piece of automatic setup is still pending. Linux has no such gap — the same source this repo ships also produces the real, tested `.deb`/`.rpm` packages used by paid editions (see `apps/watchdog` and `systemd/`).

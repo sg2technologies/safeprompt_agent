@@ -1011,6 +1011,49 @@ async fn console_page() -> impl IntoResponse {
     Html(CONSOLE_HTML)
 }
 
+/// Where the local console's "Install it" panel tells a user to
+/// **Load unpacked** from -- computed from the actual running binary's
+/// location rather than hardcoded. Real gap found 2026-09-04: the panel
+/// used to hardcode `C:\Program Files\SafePrompt\extension\unpacked`
+/// unconditionally, which is right for an installed build but flatly
+/// wrong for anyone running a from-source build (the public repo's
+/// README build-from-source path) -- there, the real extension source
+/// lives at the repo root's `browser-extension\`, not under Program
+/// Files at all, and no `\extension\unpacked` folder exists to point at.
+///
+/// Checked by existence, not by pattern-matching the path string (e.g.
+/// "contains Program Files") -- a portable/reinstalled-elsewhere layout
+/// still resolves correctly as long as the same relative shape holds:
+/// installed builds ship `extension\unpacked\` as a sibling of the exe;
+/// a from-source build's exe sits at `target\{debug,release}\`, two
+/// directories below the repo root that holds `browser-extension\`.
+/// Returns `None` (the console shows a generic fallback instead of a
+/// confidently wrong path) if neither guess exists on disk.
+///
+/// Returns the path alongside which case it detected -- "installed" vs.
+/// "source" -- rather than just a bare path string: a user (even a
+/// developer, per this whole function's own reason for existing) staring
+/// at an unfamiliar path with no context can't tell whether it's correct
+/// or a bug. Saying *why* out loud ("because you built this from source")
+/// is what actually resolves that confusion, not just picking the right
+/// path silently.
+fn resolve_extension_folder_path() -> Option<(String, &'static str)> {
+    let exe = std::env::current_exe().ok()?;
+    let exe_dir = exe.parent()?;
+
+    let installed = exe_dir.join("extension").join("unpacked");
+    if installed.is_dir() {
+        return Some((installed.to_string_lossy().into_owned(), "installed"));
+    }
+
+    let dev_source = exe_dir.parent()?.parent()?.join("browser-extension");
+    if dev_source.is_dir() {
+        return Some((dev_source.to_string_lossy().into_owned(), "source"));
+    }
+
+    None
+}
+
 async fn ui_status(State(state): State<ApiState>) -> Json<serde_json::Value> {
     let policy = state.inspector.current_policy();
     // ONB-008/SP-CONF-003: persistent, queryable-any-time provenance --
@@ -1054,6 +1097,10 @@ async fn ui_status(State(state): State<ApiState>) -> Json<serde_json::Value> {
             chrono::Utc::now().signed_duration_since(seen.with_timezone(&chrono::Utc))
                 < chrono::Duration::seconds(150)
         });
+    let (extension_folder_path, extension_folder_kind) = match resolve_extension_folder_path() {
+        Some((path, kind)) => (Some(path), Some(kind)),
+        None => (None, None),
+    };
     Json(serde_json::json!({
         "edition": state.edition.as_str(),
         "tenant": state.tenant.as_deref(),
@@ -1067,6 +1114,8 @@ async fn ui_status(State(state): State<ApiState>) -> Json<serde_json::Value> {
         "extension_manual_install_needed": extension_manual_install_needed,
         "extension_detected": extension_detected,
         "extension_profiles": extension_profiles,
+        "extension_folder_path": extension_folder_path,
+        "extension_folder_kind": extension_folder_kind,
     }))
 }
 
