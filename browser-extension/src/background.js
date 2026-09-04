@@ -120,11 +120,28 @@ async function sendHeartbeat() {
     method: "POST",
     headers,
     body: JSON.stringify({ profile_id: profileId }),
-  }).catch(() => {
-    // Agent not installed/not running -- nothing to do here; the tray/fleet
-    // side already treats a stale-or-missing heartbeat file as "not
-    // detected" on its own, so silently skipping this tick is enough.
-  });
+  })
+    .then((resp) => {
+      // 2026-09-04: this used to have no .then() at all -- a non-2xx
+      // response (e.g. a 403 from an extension-origin mismatch) was
+      // completely indistinguishable from success, since only a
+      // network-level failure reaches .catch() below. Same loud-on-403
+      // treatment as the inspect-request handler above, for the same
+      // reason: "Extension not detected" in the console with no visible
+      // cause is a much worse debugging experience than a named 403.
+      if (!resp.ok && resp.status === 403) {
+        console.error(
+          `[SafePrompt] Heartbeat rejected (403) — the console will keep showing "not detected." ` +
+          `This extension's ID is ${chrome.runtime.id}; make sure the Agent's ` +
+          `SAFEPROMPT_EXTENSION_ORIGINS includes chrome-extension://${chrome.runtime.id}.`
+        );
+      }
+    })
+    .catch(() => {
+      // Agent not installed/not running -- nothing to do here; the tray/fleet
+      // side already treats a stale-or-missing heartbeat file as "not
+      // detected" on its own, so silently skipping this tick is enough.
+    });
 }
 
 chrome.alarms.onAlarm.addListener((alarm) => {
