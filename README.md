@@ -22,13 +22,13 @@ This repository is the **Community edition**: the Rust Agent (`agent/` at the re
 
 ## Installation
 
-### Option A — Pre-built installer (recommended) - Download the exe
+### Option A — Pre-built installer (recommended for Windows) - Download the exe
 
-The simplest way to get started on Windows: download the signed installer from [safeprompt.pro](https://www.safeprompt.pro/). It bundles the agent, the browser extension, and on-device OCR support in one package — no build tools required.
+The simplest way to get started on Windows: download the signed installer from [safeprompt.pro](https://www.safeprompt.pro/). It bundles the agent, the browser extension, and on-device OCR support in one package — no build tools required. There's no pre-built package for Linux or macOS yet — use Option B below on those platforms.
 
-### Option B — Build from source
+### Option B — Build from source (Windows, Linux, macOS)
 
-Requires the [Rust toolchain](https://rustup.rs/) (stable channel).
+Requires the [Rust toolchain](https://rustup.rs/) (stable channel). The Community binary (`apps/service`) has no Windows-only code — it builds and runs the same way on Linux and macOS.
 
 ```bash
 git clone https://github.com/sg2technologies/safeprompt_agent.git
@@ -45,6 +45,8 @@ Run it:
 Then open **http://127.0.0.1:8847** in your browser for the local console — no account or sign-in needed.
 
 > On-device OCR (image and scanned-PDF scanning) needs two additional runtime libraries — `onnxruntime` and `pdfium` — placed next to the built binary. See `crates/ocr`'s documentation for download links; everything else works out of the box.
+
+> **macOS note**: `platform/macos` (system-proxy auto-configuration) is currently a stub — it compiles but doesn't actually route traffic through the Agent yet. The detection engine, local console, and browser-extension integration below all work; only that one piece of automatic setup is still pending. Linux has no such gap — the same source this repo ships also produces the real, tested `.deb`/`.rpm` packages used by paid editions (see `apps/watchdog` and `systemd/`).
 
 ## Using it with your browser
 
