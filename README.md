@@ -28,7 +28,14 @@ The simplest way to get started on Windows: download the signed installer from [
 
 ### Option B — Build from source (Windows, Linux, macOS)
 
-Requires the [Rust toolchain](https://rustup.rs/) (stable channel). The Community binary (`apps/service`) has no Windows-only code — it builds and runs the same way on Linux and macOS.
+**Requirements:**
+- [Rust toolchain](https://rustup.rs/), stable channel
+- Git
+- Windows only: MSVC Build Tools (the "Desktop development with C++" workload in Visual Studio Build Tools, or a full Visual Studio install) — the standard native-linking prerequisite for any Rust project on Windows with dependencies that aren't pure Rust; rustup's installer offers to install this for you if it's missing
+- Chrome or Edge, if you want the browser-extension integration below (the Agent itself doesn't need a browser to run)
+- Two extra runtime libraries if you want on-device OCR (image/scanned-PDF scanning) — see [OCR support](#ocr-support) below; everything else works without them
+
+The Community binary (`apps/service`) has no Windows-only code — it builds and runs the same way on Linux and macOS.
 
 ```bash
 git clone https://github.com/sg2technologies/safeprompt_agent.git
@@ -44,11 +51,20 @@ Run it:
 
 Then open **http://127.0.0.1:8847** in your browser for the local console — no account or sign-in needed.
 
-> **Windows Firewall**: the first time you run it, Windows will likely show a "Windows Defender Firewall has blocked some features of this app" prompt — this is normal for any freshly built, unsigned binary that opens a listening socket, not something specific to SafePrompt. Everything the local console and browser extension need (the local API, the reverse proxy) binds to `127.0.0.1` only, so it's reachable from this machine regardless of what you click. It's safe to click **Cancel**/dismiss the prompt if you only need local use; click **Allow access** (and consider limiting it to **Private networks**) only if you're deliberately running a role that needs to be reachable from other devices, like Tenant SPOC.
-
-> On-device OCR (image and scanned-PDF scanning) needs two additional runtime libraries — `onnxruntime` and `pdfium` — placed next to the built binary. See `crates/ocr`'s documentation for download links; everything else works out of the box.
+> **Windows Firewall**: the first time you run it, Windows will likely show a "Windows Defender Firewall has blocked some features of this app" prompt — this is normal for any freshly built, unsigned binary that opens a listening socket, not something specific to SafePrompt. SafePrompt's local console and browser-extension API bind to `127.0.0.1` only by default, meaning they're reachable exclusively from this same machine — no firewall rule changes that. For ordinary local use, it's safe to click **Cancel**/dismiss the prompt entirely; nothing on `127.0.0.1` needs a firewall exception to work. Only click **Allow access** if you've deliberately reconfigured the Agent to bind to a real network interface for a role that genuinely needs to be reached from other devices (e.g. a fleet's Tenant SPOC) — and if you have, treat that as a real network service to secure, not a default posture.
 
 > **macOS note**: `platform/macos` (system-proxy auto-configuration) is currently a stub — it compiles but doesn't actually route traffic through the Agent yet. The detection engine, local console, and browser-extension integration below all work; only that one piece of automatic setup is still pending. Linux has no such gap — the same source this repo ships also produces the real, tested `.deb`/`.rpm` packages used by paid editions (see `apps/watchdog` and `systemd/`).
+
+## Verify installation
+
+Before relying on it, confirm the Agent is actually detecting things:
+
+1. Start the Agent (`./target/release/safeprompt-service` or the installed service) and open **http://127.0.0.1:8847**.
+2. Open the **Policy** tab and confirm the detectors you care about are toggled on.
+3. Open the **Test a Message** tab and paste in a synthetic test secret — e.g. `AKIAIOSFODNN7EXAMPLE` (a documented AWS example key, not a real credential) — and confirm it comes back Redact/Block, not Allow.
+4. If you're using the browser extension, follow [Using it with your browser](#using-it-with-your-browser) below, then repeat the same synthetic-secret test *inside an actual AI chat prompt* — a green "Connected" status on its own is not proof scanning works (see the warning in that section).
+
+If step 3 doesn't flag the test secret, check the Policy tab before anything else — a detector toggled off, or a category set to Allow, means exactly that.
 
 ## Using it with your browser
 
@@ -56,10 +72,9 @@ The extension (`browser-extension/` in this repo) is what actually sees your pro
 
 1. Open `chrome://extensions` (or `edge://extensions`) and turn on **Developer mode**.
 2. Click **Load unpacked** and select this repo's `browser-extension/` folder directly — no build step needed.
-3. Chrome assigns the unpacked extension a random local ID — copy it from the extension's card.
-4. **⚠️ Point the Agent at that ID — do not skip this step.** The Agent only accepts requests from an extension origin it recognizes, and by default that's SG2's own official build's ID, not yours. Skipping this doesn't produce an error: the popup and local console still show **"Connected"** (that one check doesn't require the ID to match), so it looks like everything's working — but every prompt and file upload is silently going through **completely unscanned**, since a rejected request fails open by design (a broken/unreachable Agent shouldn't break your browsing) rather than blocking your traffic. If SafePrompt looks connected but genuinely isn't catching anything, this is almost always why — check the extension's own service worker console (`chrome://extensions` → SafePrompt → **service worker** → Inspect) for a `403` error naming the mismatch.
+3. Chrome assigns the unpacked extension a local extension ID (derived from how it was loaded, not something SafePrompt controls) — copy it from the extension's card.
+4. **Configure the extension origin — do not skip this step.** The Agent only accepts requests from an extension origin it recognizes, and by default that's SG2's own official build's ID, not yours. Start the Agent with your ID set instead:
 
-   Start the Agent with that ID set:
    ```bash
    SAFEPROMPT_EXTENSION_ORIGINS=chrome-extension://<your-extension-id> ./target/release/safeprompt-service
    ```
@@ -72,13 +87,36 @@ The extension (`browser-extension/` in this repo) is what actually sees your pro
    set SAFEPROMPT_EXTENSION_ORIGINS=chrome-extension://<your-extension-id>
    target\release\safeprompt-service.exe
    ```
-5. Reload the tab on whichever AI site you're using. The local console's **Browser extension** tab (`http://127.0.0.1:8847`) confirms once it's detected. Detection alone isn't proof scanning works, though — actually test it: paste a fake secret (e.g. `AKIAIOSFODNN7EXAMPLE`) into a prompt and confirm it gets masked/blocked before send, don't just trust the "Connected" status.
+
+   **⚠️ Important:** skipping this doesn't produce an error — the popup and local console still show **"Connected"** even with the wrong ID configured, since that check doesn't require the ID to match. Every prompt and file upload then goes through **completely unscanned**, silently, because a rejected request fails open by design (a broken/unreachable Agent shouldn't break your browsing) rather than blocking your traffic. Always verify with a real test (see [Verify installation](#verify-installation) above), never just the "Connected" status. If it looks connected but isn't catching anything, check the extension's own service worker console (`chrome://extensions` → SafePrompt → **service worker** → Inspect) for a `403` error naming the mismatch.
+5. Reload the tab on whichever AI site you're using. The local console's **Browser extension** tab (`http://127.0.0.1:8847`) confirms once it's detected — then actually test it (paste the synthetic test secret `AKIAIOSFODNN7EXAMPLE` into a prompt and confirm it gets masked/blocked before send), don't just trust the "Connected" status.
 
 To produce a stable ID and a real, installable `.crx` instead (e.g. for your own team's force-install policy) rather than repeating step 4 on every machine, generate your own signing key with `node browser-extension/gen-key.mjs` and pack it with `browser-extension/scripts/pack-crx.ps1` — **never reuse SG2's production key**, which isn't part of this repository, precisely so a community build's identity and an official SafePrompt build's identity are never the same thing.
 
 ## Configuring policy
 
 Everything is controlled from the local console's **Policy** tab, or by editing the underlying JSON policy document directly — no cloud account required to change what's detected or how it's handled.
+
+## OCR support
+
+On-device OCR (image and scanned-PDF scanning) needs two extra runtime libraries placed next to the built binary — they're loaded dynamically at startup, not statically linked in, so the Agent runs fine without them; OCR-dependent uploads just pass through unscanned instead. On Windows that means:
+
+```
+target/release/
+├── safeprompt-service.exe
+├── onnxruntime.dll
+└── pdfium.dll
+```
+
+**[crates/ocr/README.md](crates/ocr/README.md)** has the exact download links, pinned versions, SHA-256 hashes to verify against, and a copy-pasteable PowerShell script that fetches and places both files for you. Linux/macOS use the platform-appropriate filename (`libonnxruntime.so`/`libonnxruntime.dylib`, etc.) — the same doc has what's known so far for those.
+
+## Security & privacy
+
+- Detection (secrets, PII, financial data, prompt injection, ...) runs **entirely on-device** — nothing is sent to a cloud service to be scanned.
+- The local console and browser-extension API bind to `127.0.0.1` by default — reachable only from this machine, not your network.
+- The audit log of scan decisions is stored locally; nothing leaves the machine unless you explicitly configure that.
+- No account, sign-in, or license is required to build, run, or use Community edition scanning.
+- The browser extension only ever talks to an Agent on the machine it's configured with an explicit origin for (see [Using it with your browser](#using-it-with-your-browser) above) — it doesn't phone home anywhere else.
 
 ## Project layout
 
@@ -93,7 +131,9 @@ browser-extension/src/  content scripts: intercepts fetch/XHR, relays to the Age
 
 ## Enterprise edition
 
-Need centralized policy management across a fleet, SIEM/syslog export, advanced attack detection, or SSO? SafePrompt Enterprise builds on this same engine with fleet management, cloud audit sync, and priority support.
+Need centralized policy management across a fleet, SIEM/syslog export, advanced attack detection, or SSO? SafePrompt Enterprise builds on this same detection engine with fleet management, cloud audit sync, and priority support.
+
+Enterprise is a **separate, proprietary product** — its fleet management, SSO/RBAC, SIEM integration, compliance reporting, and GPO/Intune deployment tooling are not included in this repository (see [License](#license) below).
 
 **→ [www.safeprompt.pro](https://www.safeprompt.pro/)**
 
