@@ -57,12 +57,22 @@ The extension (`browser-extension/` in this repo) is what actually sees your pro
 1. Open `chrome://extensions` (or `edge://extensions`) and turn on **Developer mode**.
 2. Click **Load unpacked** and select this repo's `browser-extension/` folder directly — no build step needed.
 3. Chrome assigns the unpacked extension a random local ID — copy it from the extension's card.
-4. **Point the Agent at that ID**: the Agent only accepts requests from an extension origin it recognizes, and by default that's SG2's own official build's ID, not yours. Start the Agent with
+4. **⚠️ Point the Agent at that ID — do not skip this step.** The Agent only accepts requests from an extension origin it recognizes, and by default that's SG2's own official build's ID, not yours. Skipping this doesn't produce an error: the popup and local console still show **"Connected"** (that one check doesn't require the ID to match), so it looks like everything's working — but every prompt and file upload is silently going through **completely unscanned**, since a rejected request fails open by design (a broken/unreachable Agent shouldn't break your browsing) rather than blocking your traffic. If SafePrompt looks connected but genuinely isn't catching anything, this is almost always why — check the extension's own service worker console (`chrome://extensions` → SafePrompt → **service worker** → Inspect) for a `403` error naming the mismatch.
+
+   Start the Agent with that ID set:
    ```bash
    SAFEPROMPT_EXTENSION_ORIGINS=chrome-extension://<your-extension-id> ./target/release/safeprompt-service
    ```
-   (On Windows PowerShell: `$env:SAFEPROMPT_EXTENSION_ORIGINS="chrome-extension://<your-extension-id>"` before running it.)
-5. Reload the tab on whichever AI site you're using. The local console's **Browser extension** tab (`http://127.0.0.1:8847`) confirms once it's detected.
+   Windows PowerShell:
+   ```powershell
+   $env:SAFEPROMPT_EXTENSION_ORIGINS="chrome-extension://<your-extension-id>"; .\target\release\safeprompt-service.exe
+   ```
+   Windows cmd.exe:
+   ```cmd
+   set SAFEPROMPT_EXTENSION_ORIGINS=chrome-extension://<your-extension-id>
+   target\release\safeprompt-service.exe
+   ```
+5. Reload the tab on whichever AI site you're using. The local console's **Browser extension** tab (`http://127.0.0.1:8847`) confirms once it's detected. Detection alone isn't proof scanning works, though — actually test it: paste a fake secret (e.g. `AKIAIOSFODNN7EXAMPLE`) into a prompt and confirm it gets masked/blocked before send, don't just trust the "Connected" status.
 
 To produce a stable ID and a real, installable `.crx` instead (e.g. for your own team's force-install policy) rather than repeating step 4 on every machine, generate your own signing key with `node browser-extension/gen-key.mjs` and pack it with `browser-extension/scripts/pack-crx.ps1` — **never reuse SG2's production key**, which isn't part of this repository, precisely so a community build's identity and an official SafePrompt build's identity are never the same thing.
 

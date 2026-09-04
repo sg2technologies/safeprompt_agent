@@ -290,10 +290,34 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       headers,
       body: JSON.stringify(body),
     })
-      .then((resp) => (resp.ok ? resp.json() : null))
+      .then((resp) => {
+        if (resp.ok) return resp.json();
+        // 2026-09-04: a 403 here used to be silently indistinguishable
+        // from "Agent not running" -- both just returned null and failed
+        // open, which is correct behavior (a broken/unreachable Agent
+        // shouldn't break browsing), but left a real, common
+        // misconfiguration (SAFEPROMPT_EXTENSION_ORIGINS on the Agent not
+        // including THIS extension's actual ID -- the default only
+        // matches SG2's own signed build, not a from-source `Load
+        // unpacked` install) completely invisible: the popup still shows
+        // "Connected" (that check doesn't require the origin match), so
+        // nothing ever looked wrong even though every single scan was
+        // being silently skipped. Still fails open -- this only makes the
+        // 403 case loud in the service worker console instead of mute.
+        if (resp.status === 403) {
+          console.error(
+            `[SafePrompt] Agent rejected this request (403) — every prompt/file is currently going through UNSCANNED. ` +
+            `Most likely cause: SAFEPROMPT_EXTENSION_ORIGINS on the Agent doesn't include this extension's real ID. ` +
+            `This extension's ID is ${chrome.runtime.id}. Restart the Agent with ` +
+            `SAFEPROMPT_EXTENSION_ORIGINS=chrome-extension://${chrome.runtime.id} — see the README's ` +
+            `"Using it with your browser" section, step 4.`
+          );
+        }
+        return null;
+      })
       .then((result) => sendResponse(result))
-      // Agent not installed, not running, or unlicensed for browser_coverage
-      // -- fail open, same posture as everywhere else in this extension.
+      // Agent not installed or not running -- fail open, same posture as
+      // everywhere else in this extension.
       .catch(() => sendResponse(null));
   })();
 
