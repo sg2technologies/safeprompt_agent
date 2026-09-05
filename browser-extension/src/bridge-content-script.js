@@ -23,12 +23,29 @@
     // the exact same `window.location` as the page it's injected into --
     // simplest to read it here rather than threading it through the
     // MAIN-world postMessage payload too.
-    chrome.runtime.sendMessage({ kind: data.kind, text: data.text, filename: data.filename, dataBase64: data.dataBase64, domain: window.location.hostname }, (response) => {
-      // chrome.runtime.lastError fires if the background worker is
-      // unreachable (e.g. the extension is reloading) -- same fail-open
-      // posture as a timeout in the MAIN-world interceptor.
-      const result = chrome.runtime.lastError ? null : response;
-      window.postMessage({ source: "safeprompt-bridge-response", requestId: data.requestId, result }, "*");
-    });
+    try {
+      chrome.runtime.sendMessage({ kind: data.kind, text: data.text, filename: data.filename, dataBase64: data.dataBase64, domain: window.location.hostname }, (response) => {
+        // chrome.runtime.lastError fires if the background worker is
+        // unreachable (e.g. the extension is reloading) -- same fail-open
+        // posture as a timeout in the MAIN-world interceptor.
+        const result = chrome.runtime.lastError ? null : response;
+        window.postMessage({ source: "safeprompt-bridge-response", requestId: data.requestId, result }, "*");
+      });
+    } catch (_e) {
+      // Fixed 2026-09-05 (live-caught: "Uncaught Error: Extension context
+      // invalidated" on chatgpt.com): chrome.runtime.sendMessage can also
+      // throw SYNCHRONOUSLY, not just set chrome.runtime.lastError -- this
+      // happens when the extension's own context is invalidated (e.g. this
+      // content script is still alive in a tab that was already open when
+      // the extension got reloaded/updated/disabled). Same fail-open
+      // posture as the lastError branch above, just reached via the
+      // synchronous path -- without this catch, the exception stopped
+      // execution before the response postMessage ever fired, so the
+      // waiting askAgent()/askAgentFile() promise in
+      // main-world-interceptor.js sat until its own 5s/20s timeout instead
+      // of failing open immediately, on every scan attempt from a stale
+      // tab.
+      window.postMessage({ source: "safeprompt-bridge-response", requestId: data.requestId, result: null }, "*");
+    }
   });
 })();
