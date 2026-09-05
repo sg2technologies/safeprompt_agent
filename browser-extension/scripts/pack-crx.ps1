@@ -72,7 +72,26 @@ Write-Host "Packing with $ChromePath ..."
 # after that directory.
 $producedCrx = Join-Path ([System.IO.Path]::GetTempPath()) "safeprompt-extension-pack-stage.crx"
 Remove-Item -Force $producedCrx -ErrorAction SilentlyContinue
-& $ChromePath --pack-extension="$stageDir" --pack-extension-key="$keyPath"
+
+# Explicit, disposable -user-data-dir -- live-caught 2026-09-05 on a CI
+# runner: `chrome.exe --pack-extension=...` is subject to Chrome's normal
+# single-instance behavior, keyed off the *default* profile directory. If
+# anything else on the machine already has a Chrome process alive against
+# that same default profile (a leftover from a previous job on a reused
+# runner, some other tool on the box, etc.), this invocation silently
+# hands its command line to that existing process over IPC instead of
+# actually running -- the exact "packing can silently no-op if Chrome is
+# already running" case this script's own error below already warned
+# about, except it also surfaced as chrome_main_delegate's own "Input
+# directory must exist" (the already-running instance resolving $stageDir
+# against a different working directory/profile than this invocation's).
+# A fresh, unique -user-data-dir per run can never collide with another
+# process's profile, so this invocation is always its own real Chrome
+# instance -- not a workaround for a flake, a fix for a real single-
+# instance hazard any shared/CI machine is exposed to.
+$packProfileDir = Join-Path ([System.IO.Path]::GetTempPath()) "safeprompt-extension-pack-profile"
+Remove-Item -Recurse -Force $packProfileDir -ErrorAction SilentlyContinue
+& $ChromePath --pack-extension="$stageDir" --pack-extension-key="$keyPath" --user-data-dir="$packProfileDir" --no-first-run
 
 # Chrome re-execs into a background process, so the .crx may not exist yet
 # by the time the call above returns. Poll briefly for it.
@@ -86,6 +105,7 @@ if (Test-Path $producedCrx) {
     Move-Item -Force $producedCrx $crxPath
 }
 Remove-Item -Recurse -Force $stageDir -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force $packProfileDir -ErrorAction SilentlyContinue
 
 if (-not (Test-Path $crxPath)) {
     throw "Packing failed - chrome did not produce a .crx file. Check that no other Chrome window has this profile open (packing can silently no-op if Chrome is already running)."
