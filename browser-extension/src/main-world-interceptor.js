@@ -577,6 +577,20 @@
     return extracted.locations.length === 1 || extracted.parsed === null;
   }
 
+  /// Fixed 2026-09-05 (code review): every wasRedactionApplied(...) === false
+  /// branch used to show NO toast at all -- the agent detected something,
+  /// policy said Redact, applyRedaction correctly declined to risk
+  /// corrupting a multi-field/unrecognized JSON body (see its own doc
+  /// comment), and the unmasked request/response went out with zero signal
+  /// to the user that "Redact" didn't actually happen. A DLP tool silently
+  /// failing to enforce its own decision is worse than the enforcement gap
+  /// itself. Now surfaces as a Warn-style toast instead of silence --
+  /// doesn't block (this stays the documented pass-through-rather-than-
+  /// corrupt trade-off), but the user gets told.
+  function unredactedFallbackToast(what) {
+    return ["warn", `SafePrompt found ${what} but couldn't safely mask it (multi-part or unrecognized JSON shape) — sent as-is`];
+  }
+
   /// Turn the agent's ScanResult into what this interception site should do.
   /// The agent reports the policy DECISION; each enforcement point decides
   /// how to act on it -- mirroring agent/crates/common
@@ -743,6 +757,9 @@
       outgoingInit = { ...init, body: applyRedaction(extracted, verdict.sanitized_prompt) };
       if (wasRedactionApplied(extracted)) {
         showToast(outcome.toast[0], outcome.toast[1]);
+      } else {
+        const fallback = unredactedFallbackToast(describeFindings(verdict.findings));
+        showToast(fallback[0], fallback[1]);
       }
     } else if (outcome.toast) {
       showToast(outcome.toast[0], outcome.toast[1]); // Warn / Audit -- sent, but flagged
@@ -778,6 +795,9 @@
     if (outcome.redact && verdict.sanitized_prompt) {
       if (wasRedactionApplied(extracted)) {
         showToast("redact", `SafePrompt redacted ${describeFindings(verdict.findings)} from the response`);
+      } else {
+        const fallback = unredactedFallbackToast(describeFindings(verdict.findings));
+        showToast(fallback[0], `${fallback[1]} (in the AI response)`);
       }
       return new Response(applyRedaction(extracted, verdict.sanitized_prompt), {
         status: response.status,
@@ -854,6 +874,9 @@
           outgoing = applyRedaction(extracted, verdict.sanitized_prompt);
           if (wasRedactionApplied(extracted)) {
             showToast(outcome.toast[0], outcome.toast[1]);
+          } else {
+            const fallback = unredactedFallbackToast(describeFindings(verdict.findings));
+            showToast(fallback[0], fallback[1]);
           }
         } else if (outcome.toast) {
           showToast(outcome.toast[0], outcome.toast[1]); // Warn / Audit
