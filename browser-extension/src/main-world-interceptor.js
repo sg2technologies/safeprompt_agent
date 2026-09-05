@@ -209,7 +209,7 @@
       log("binary upload -> inspecting", { url, filename, size });
       const dataBase64 = await bodyToBase64(body);
       const verdict = await askAgentFile(filename, dataBase64);
-      log("binary upload <- verdict", { url, filename, action: verdict && verdict.action, findings: verdict && verdict.findings, unmaskable_reason: verdict && verdict.unmaskable_reason });
+      log("binary upload <- verdict", { url, filename, action: verdict && verdict.action, findings: safeFindings(verdict && verdict.findings), unmaskable_reason: verdict && verdict.unmaskable_reason });
       const outcome = verdictOutcome(verdict);
       if (outcome.stop) {
         return { blocked: true, findings: (verdict && verdict.findings) || [], toast: fileToastMessage(verdict, verdict && verdict.findings) };
@@ -257,7 +257,7 @@
       }
       log("fetch (file) -> inspecting", { name: value.name, size: value.size });
       const verdict = await askAgentFile(value.name, dataBase64);
-      log("fetch (file) <- verdict", { name: value.name, action: verdict && verdict.action, findings: verdict && verdict.findings, unmaskable_reason: verdict && verdict.unmaskable_reason });
+      log("fetch (file) <- verdict", { name: value.name, action: verdict && verdict.action, findings: safeFindings(verdict && verdict.findings), unmaskable_reason: verdict && verdict.unmaskable_reason });
       if (verdict && (verdict.action === "Block" || verdict.action === "RequireApproval")) {
         return { blocked: true, findings: verdict.findings, toast: fileToastMessage(verdict, verdict.findings) };
       }
@@ -609,15 +609,42 @@
   // unless "Verbose" level is explicitly enabled) at every real decision
   // point -- added 2026-08-05 after several rounds of remote debugging
   // where "is this even running, and on what" turned out to be the actual
-  // open question, not the scanning logic itself. Truncates any scanned
-  // text before logging it (never the full body -- this is a DLP tool,
-  // logging the exact secrets it's supposed to protect to a console
-  // anyone with devtools access can read would be its own leak).
+  // open question, not the scanning logic itself. Never passed scanned
+  // text or a raw Finding here (see safeFindings below) -- this is a DLP
+  // tool, logging the exact secrets it's supposed to protect to a console
+  // anyone with devtools access can read would be its own leak.
+  //
+  // Fixed 2026-09-05: this used to call a `truncate(text, 200)` helper and
+  // log the first 200 chars of the scanned body directly, plus the raw
+  // `verdict.findings` array untouched. Both were real leaks -- 200 chars
+  // is plenty to carry a full password or API key, and each Finding's
+  // `snippet` field (agent/crates/common::Finding) is the complete,
+  // untruncated matched text, not a masked preview. Callers now pass only
+  // counts (extractedLocations, characterCount) and safeFindings(...)
+  // output instead of the text/findings themselves.
   function log(...args) {
     console.log("[SafePrompt]", ...args);
   }
-  function truncate(s, n = 200) {
-    return typeof s === "string" && s.length > n ? s.slice(0, n) + `…(${s.length} chars total)` : s;
+  // Strips a ScanResult's findings down to what's safe to print: the
+  // detector category/label and severity (e.g. "AWS_SECRET_KEY" / "HIGH"),
+  // never `snippet` (the raw matched secret/PII value) or
+  // `redacted_replacement` (still derived from it).
+  //
+  // Fixed 2026-09-05 (code review, same day as the fix above): `match_name`
+  // is a safe static label for every category EXCEPT CustomKeyword, where
+  // the agent sets it to the literal tenant-configured keyword/codename
+  // itself (agent/crates/inspector::scan_custom_keywords --
+  // `match_name: rule.pattern.clone()`, e.g. a confidential project name).
+  // Logging that would leak exactly the term this category exists to
+  // catch, so it's dropped for that one category.
+  function safeFindings(findings) {
+    return Array.isArray(findings)
+      ? findings.map((f) => ({
+          category: f && f.category,
+          match_name: f && f.category === "CustomKeyword" ? undefined : f.match_name,
+          severity: f && f.severity,
+        }))
+      : findings;
   }
 
   const originalFetch = window.fetch.bind(window);
@@ -699,9 +726,9 @@
     }
 
     const extracted = extractScannable(init.body);
-    log("fetch -> inspecting", { url, extractedLocations: extracted.locations.length, scannedText: truncate(extracted.text) });
+    log("fetch -> inspecting", { url, extractedLocations: extracted.locations.length, characterCount: extracted.text.length });
     const verdict = await askAgent("inspect", extracted.text);
-    log("fetch <- verdict", { url, action: verdict && verdict.action, findings: verdict && verdict.findings });
+    log("fetch <- verdict", { url, action: verdict && verdict.action, findings: safeFindings(verdict && verdict.findings) });
     const outcome = verdictOutcome(verdict);
     if (outcome.stop) {
       showToast(outcome.toast[0], outcome.toast[1]);
@@ -813,9 +840,9 @@
         return originalSend(body);
       }
       const extracted = extractScannable(body);
-      log("XHR -> inspecting", { extractedLocations: extracted.locations.length, scannedText: truncate(extracted.text) });
+      log("XHR -> inspecting", { extractedLocations: extracted.locations.length, characterCount: extracted.text.length });
       askAgent("inspect", extracted.text).then((verdict) => {
-        log("XHR <- verdict", { action: verdict && verdict.action, findings: verdict && verdict.findings });
+        log("XHR <- verdict", { action: verdict && verdict.action, findings: safeFindings(verdict && verdict.findings) });
         const outcome = verdictOutcome(verdict);
         if (outcome.stop) {
           showToast(outcome.toast[0], outcome.toast[1]);
@@ -935,9 +962,9 @@
     e.stopImmediatePropagation();
     const text = getText(el, platform).trim();
     if (!text) return;
-    log("UI intercept -> inspecting", { text: truncate(text) });
+    log("UI intercept -> inspecting", { characterCount: text.length });
     const verdict = await askAgent("inspect", text);
-    log("UI intercept <- verdict", { action: verdict && verdict.action, findings: verdict && verdict.findings });
+    log("UI intercept <- verdict", { action: verdict && verdict.action, findings: safeFindings(verdict && verdict.findings) });
     const outcome = verdictOutcome(verdict);
     if (outcome.stop) {
       showToast(outcome.toast[0], outcome.toast[1]);
