@@ -75,11 +75,15 @@ members = [
 version = "0.1.0"
 edition = "2021"
 authors = ["SafePrompt Security Team <security@safeprompt.pro>"]
-# No LICENSE file exists in this repo yet (closed-source product, not yet
-# formalized) -- "Proprietary" is the conventional placeholder for that,
-# and is required by cargo-generate-rpm (RPM's own License: header is
-# mandatory). Revisit if/when a real license file is added.
-license = "Proprietary"
+# Fixed 2026-09-05 (code review): this said "Proprietary" with a comment
+# claiming no LICENSE file existed yet -- stale, this repo's LICENSE has
+# said Apache-2.0 since it went public. cargo-generate-rpm needs *a*
+# License: value either way (RPM's own header is mandatory) -- it's just
+# supposed to be the real one, not a placeholder that contradicts this
+# repo's actual LICENSE file and misleads any tooling (license scanners,
+# `cargo metadata` consumers) that reads Cargo.toml instead of README
+# prose.
+license = "Apache-2.0"
 
 [workspace.dependencies]
 tokio = { version = "1.38", features = ["full"] }

@@ -149,6 +149,8 @@ Need centralized policy management across a fleet, SIEM/syslog export, advanced 
 
 Enterprise is a **separate, proprietary product** — its fleet management, SSO/RBAC, SIEM integration, compliance reporting, and GPO/Intune deployment tooling are not included in this repository (see [License](#license) below).
 
+**Planned:** resource-exhaustion hardening for OCR/document processing (page-count, image-dimension, decompression, and processing-time limits, plus a cap on concurrent OCR jobs) so a pathological file can't be used to run a device's CPU/memory up. Not shipped yet in either edition today — Community's only current guard is the extension's flat per-upload size cap (see [OCR support](#ocr-support) above) — but it's scoped for Enterprise first, given who's most exposed to a deliberately hostile file (a fleet accepting uploads at scale) rather than a single self-hosted install.
+
 **→ [www.safeprompt.pro](https://www.safeprompt.pro/)**
 
 ## Contact
