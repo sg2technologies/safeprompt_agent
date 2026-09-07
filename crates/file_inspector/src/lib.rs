@@ -123,6 +123,31 @@ pub fn extract_text(filename: &str, bytes: &[u8], ocr: Option<&dyn OcrEngine>) -
     }
 }
 
+/// Best-effort file-type sniff from magic bytes, for the narrow case where
+/// the caller couldn't determine a usable extension from the upload at all
+/// (AGENT-FILE-004: some AI sites `PUT` an attachment as
+/// `application/octet-stream` with a filename like "blob"/"upload.bin",
+/// so `extract_text`'s extension dispatch skips OCR and the image goes
+/// through unscanned). Deliberately limited to the unambiguous binary
+/// signatures that matter for this crate's OCR/PDF path -- this is NOT a
+/// general content-type library, and NOT a trust decision: a file whose
+/// bytes don't match a known signature still comes back `None` and, like a
+/// spoofed extension, is left to fail downstream exactly as the module doc
+/// comment describes. Returns a lowercase extension string suitable for
+/// splicing into a synthetic `"upload.<ext>"` filename.
+pub fn sniff_extension(bytes: &[u8]) -> Option<&'static str> {
+    match bytes {
+        [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, ..] => Some("png"),
+        [0xFF, 0xD8, 0xFF, ..] => Some("jpg"),
+        [b'G', b'I', b'F', b'8', b'7' | b'9', b'a', ..] => Some("gif"),
+        [b'%', b'P', b'D', b'F', b'-', ..] => Some("pdf"),
+        [b'B', b'M', ..] => Some("bmp"),
+        [0x49, 0x49, 0x2A, 0x00, ..] | [0x4D, 0x4D, 0x00, 0x2A, ..] => Some("tif"),
+        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P', ..] => Some("webp"),
+        _ => None,
+    }
+}
+
 /// A .docx is a ZIP archive; every visible character lives inside
 /// `word/document.xml`'s `<w:t>...</w:t>` text-run elements. Deliberately a
 /// hand-rolled scan for just that one element rather than a full XML parser
@@ -382,6 +407,40 @@ mod tests {
     fn unrecognized_extension_is_unsupported_not_empty_text() {
         let outcome = extract_text("archive.zzz", b"whatever bytes", None);
         assert!(matches!(outcome, ExtractionOutcome::Unsupported { .. }));
+    }
+
+    #[test]
+    fn sniff_extension_identifies_the_signatures_that_matter_for_ocr() {
+        // AGENT-FILE-004: the exact bug -- an image PUT as
+        // application/octet-stream named "upload.bin" -- is only closed if
+        // these magic bytes resolve to a real, OCR-routable extension.
+        assert_eq!(sniff_extension(b"\x89PNG\r\n\x1a\n....."), Some("png"));
+        assert_eq!(sniff_extension(b"\xFF\xD8\xFF\xE0\x00\x10JFIF"), Some("jpg"));
+        assert_eq!(sniff_extension(b"GIF89a....."), Some("gif"));
+        assert_eq!(sniff_extension(b"%PDF-1.7\n....."), Some("pdf"));
+        assert_eq!(sniff_extension(b"BM\x1e\x00....."), Some("bmp"));
+        assert_eq!(sniff_extension(b"II*\x00....."), Some("tif"));
+        assert_eq!(sniff_extension(b"RIFF\x00\x00\x00\x00WEBP....."), Some("webp"));
+        // A format we can't positively identify stays None -- callers fall
+        // back to the untrusted filename, no worse off than before.
+        assert_eq!(sniff_extension(b"not a known file signature"), None);
+        assert_eq!(sniff_extension(b"\x00\x01"), None);
+    }
+
+    #[test]
+    fn a_png_named_upload_bin_can_be_recovered_by_sniffing_then_ocred() {
+        // Mirrors what local_api::inspect_file_request now does: the
+        // filename has no usable extension, so extract_text alone gives up,
+        // but the sniffed type routes it straight to OCR.
+        let engine = FakeOcrEngine { result: Ok("PASSPORT NO PA0940443") };
+        let png_bytes = b"\x89PNG\r\n\x1a\n and some more bytes";
+        assert!(matches!(
+            extract_text("upload.bin", png_bytes, Some(&engine)),
+            ExtractionOutcome::Unsupported { .. }
+        ));
+        let sniffed = sniff_extension(png_bytes).expect("PNG magic bytes recognized");
+        let recovered = extract_text(&format!("upload.{sniffed}"), png_bytes, Some(&engine));
+        assert_eq!(recovered, ExtractionOutcome::Text("PASSPORT NO PA0940443".to_string()));
     }
 
     #[test]

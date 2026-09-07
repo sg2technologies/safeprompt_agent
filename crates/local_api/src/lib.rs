@@ -781,7 +781,37 @@ async fn inspect_file_request(
         _ => req.filename.clone(),
     };
 
-    let extension = req.filename.rsplit('.').next().unwrap_or("");
+    let file_bytes = match BASE64.decode(&req.data_base64) {
+        Ok(b) => b,
+        Err(e) => {
+            warn!("inspect-file: invalid base64 payload for '{}': {e}", req.filename);
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    };
+
+    // AGENT-FILE-004: the upload's filename comes from an untrusted client
+    // and some AI sites `PUT` an attachment as `application/octet-stream`
+    // named "blob"/"upload.bin" -- `extract_text` dispatches on extension,
+    // so that would skip OCR and pass the file through unscanned (real
+    // user report: a passport image uploaded to ChatGPT was extracted with
+    // no block). If the filename carries no recognized extension but the
+    // bytes have a known magic-byte signature, scan as the sniffed type.
+    // This is the Agent-side half; the browser extension does the same
+    // sniff before it ever gets here (defense in depth -- either layer
+    // alone closes the reported gap).
+    let filename_ext = req.filename.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    let (effective_filename, extension_owned) = match safeprompt_file_inspector::sniff_extension(&file_bytes) {
+        Some(sniffed) if sniffed != filename_ext => {
+            info!(
+                "inspect-file: '{}' has no matching extension; magic bytes look like .{sniffed}, scanning as that",
+                req.filename
+            );
+            (format!("upload.{sniffed}"), sniffed.to_string())
+        }
+        _ => (req.filename.clone(), filename_ext),
+    };
+    let extension = extension_owned.as_str();
+
     match state.inspector.upload_action(extension) {
         safeprompt_policy::UploadAction::Block => {
             warn!("upload '{}' blocked by policy for extension '.{extension}'", req.filename);
@@ -798,15 +828,7 @@ async fn inspect_file_request(
         safeprompt_policy::UploadAction::Inspect => {}
     }
 
-    let file_bytes = match BASE64.decode(&req.data_base64) {
-        Ok(b) => b,
-        Err(e) => {
-            warn!("inspect-file: invalid base64 payload for '{}': {e}", req.filename);
-            return Err(StatusCode::BAD_REQUEST);
-        }
-    };
-
-    let text = match safeprompt_file_inspector::extract_text(&req.filename, &file_bytes, state.inspector.ocr_engine()) {
+    let text = match safeprompt_file_inspector::extract_text(&effective_filename, &file_bytes, state.inspector.ocr_engine()) {
         safeprompt_file_inspector::ExtractionOutcome::Text(t) => t,
         safeprompt_file_inspector::ExtractionOutcome::Unsupported { filename, reason } => {
             warn!("inspect-file: '{filename}' could not be scanned ({reason}) — allowed through unscanned");
@@ -1568,6 +1590,60 @@ mod tests {
         assert_eq!(result.action, safeprompt_common::Action::Redact);
         assert!(!result.sanitized_prompt.contains("AKIAIOSFODNN7EXAMPLE"), "the key should be masked out of the sanitized text");
         assert!(result.unmaskable_reason.is_none(), "a genuinely maskable format shouldn't carry an 'unmaskable' explanation");
+    }
+
+    /// AGENT-FILE-004 regression: a real user report -- a passport image
+    /// uploaded to ChatGPT was OCR-read/extracted by ChatGPT with no block.
+    /// ChatGPT's pre-signed-URL PUT sends the raw bytes as
+    /// `application/octet-stream`, so the browser extension had to name the
+    /// upload `upload.bin`; `extract_text` dispatches on extension, so OCR
+    /// never ran and the image went through unscanned. inspect_file_request
+    /// now sniffs the magic bytes and scans as the real type.
+    #[tokio::test]
+    async fn inspect_file_sniffs_a_png_sent_as_upload_bin_and_still_runs_ocr() {
+        struct StubOcr;
+        impl safeprompt_ocr::OcrEngine for StubOcr {
+            fn extract_text(&self, _image_bytes: &[u8]) -> anyhow::Result<String> {
+                // Stand-in for what real OCR reads off the passport MRZ.
+                Ok("P<AUSCITIZEN<<JANE<<<<<<<<<<<<<<<<<<<<<<<<<<\n\
+                    PA09404433AUS8406077F1903212<17332717P<<<<68"
+                    .to_string())
+            }
+        }
+        use safeprompt_policy::PolicyConfig;
+        let inspector = Arc::new(
+            Inspector::new(PolicyConfig::default())
+                .with_ocr_engine(Some(Arc::new(StubOcr) as Arc<dyn safeprompt_ocr::OcrEngine>)),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let router =
+            LocalApiServer::new(addr, inspector, vec![TEST_ORIGIN.to_string()]).router();
+        tokio::spawn(async move { axum::serve(listener, router).await.unwrap(); });
+
+        // Minimal PNG signature + arbitrary trailing bytes -- the StubOcr
+        // ignores the pixels; what's under test is that `.bin` -> sniff ->
+        // "png" -> OCR path -> the MRZ detector fires.
+        let png_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR fake image body";
+        let resp = reqwest::Client::new()
+            .post(format!("http://{addr}/v1/inspect-file"))
+            .header("Origin", TEST_ORIGIN)
+            .json(&serde_json::json!({ "filename": "upload.bin", "data_base64": BASE64.encode(png_bytes) }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+        let result: ScanResult = resp.json().await.unwrap();
+        assert_eq!(
+            result.action,
+            safeprompt_common::Action::Block,
+            "a passport MRZ OCR-read from a PNG mislabeled 'upload.bin' must still be caught: {result:?}"
+        );
+        assert!(
+            result.findings.iter().any(|f| f.match_name == "PASSPORT_MRZ"),
+            "expected a PASSPORT_MRZ finding, got {:?}",
+            result.findings
+        );
     }
 
     #[tokio::test]

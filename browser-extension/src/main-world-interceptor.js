@@ -147,6 +147,43 @@
     return MIME_TO_EXT[ct] || (ct.startsWith("image/") ? "png" : "bin");
   }
 
+  // AGENT-FILE-004 (2026-09-07, user-reported: a passport image uploaded to
+  // ChatGPT was still read/extracted with no block). ChatGPT's pre-signed-
+  // URL PUT (see AGENT-FILE-003 above) sends the raw image bytes with a
+  // generic `Content-Type: application/octet-stream` (or the body is a bare
+  // ArrayBuffer with no `.type` at all), so `guessUploadExt` falls back to
+  // "bin" -- and the agent's file_inspector dispatches OCR purely by file
+  // extension, so `upload.bin` is "unrecognized extension" and the image
+  // goes through UNSCANNED. Sniffing the real type from the first few
+  // bytes is Content-Type-independent and fixes that. Limited to the
+  // unambiguous signatures that actually matter for the OCR/PDF path; a
+  // format we can't positively identify still falls back to
+  // `guessUploadExt` (no regression vs. today).
+  function sniffFileExt(header) {
+    if (!header || header.length < 4) return null;
+    const b = header;
+    const at = (off, ...bytes) => bytes.every((x, i) => b[off + i] === x);
+    const ascii = (off, s) => at(off, ...[...s].map((c) => c.charCodeAt(0)));
+    if (at(0, 0x89, 0x50, 0x4e, 0x47)) return "png";
+    if (at(0, 0xff, 0xd8, 0xff)) return "jpg";
+    if (ascii(0, "GIF8")) return "gif";
+    if (ascii(0, "%PDF")) return "pdf";
+    if (ascii(0, "BM")) return "bmp";
+    if (at(0, 0x49, 0x49, 0x2a, 0x00) || at(0, 0x4d, 0x4d, 0x00, 0x2a)) return "tif";
+    if (b.length >= 12 && ascii(0, "RIFF") && ascii(8, "WEBP")) return "webp";
+    return null;
+  }
+
+  async function sniffBodyExt(body) {
+    try {
+      const blob = body instanceof Blob ? body : new Blob([body]);
+      const header = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+      return sniffFileExt(header);
+    } catch (_e) {
+      return null;
+    }
+  }
+
   async function bodyToBase64(body) {
     const blob = body instanceof Blob ? body : new Blob([body]);
     return readFileAsBase64(blob);
@@ -204,7 +241,11 @@
         log("binary upload not scanned", { url, size, reason: size ? "over cap" : "empty" });
         return { blocked: false };
       }
-      const ext = guessUploadExt(body, contentType);
+      // Prefer the real type sniffed from the bytes (see sniffFileExt) --
+      // the Content-Type on these pre-signed PUTs is unreliable
+      // ("application/octet-stream"), and an "upload.bin" filename makes
+      // the agent skip OCR entirely.
+      const ext = (await sniffBodyExt(body)) || guessUploadExt(body, contentType);
       const filename = `upload.${ext}`;
       log("binary upload -> inspecting", { url, filename, size });
       const dataBase64 = await bodyToBase64(body);

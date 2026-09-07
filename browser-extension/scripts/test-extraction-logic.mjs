@@ -18,7 +18,10 @@ import vm from "vm";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const src = readFileSync(path.join(root, "src", "main-world-interceptor.js"), "utf8");
 
-const START_MARKER = "const CONTENT_KEY_NAMES";
+// Starts at MIME_TO_EXT so the binary-upload type-sniffing helpers
+// (sniffFileExt et al., AGENT-FILE-004) are in the slice too, not just
+// the JSON extraction/redaction logic.
+const START_MARKER = "const MIME_TO_EXT";
 const END_MARKER = "const originalFetch";
 const start = src.indexOf(START_MARKER);
 const end = src.indexOf(END_MARKER);
@@ -35,10 +38,11 @@ const sandbox = {};
 vm.createContext(sandbox);
 vm.runInContext(
   logicSource +
-    "\nglobalThis.extractScannable = extractScannable; globalThis.applyRedaction = applyRedaction; globalThis.wasRedactionApplied = wasRedactionApplied;",
+    "\nglobalThis.extractScannable = extractScannable; globalThis.applyRedaction = applyRedaction; globalThis.wasRedactionApplied = wasRedactionApplied;" +
+    "\nglobalThis.sniffFileExt = sniffFileExt; globalThis.guessUploadExt = guessUploadExt;",
   sandbox
 );
-const { extractScannable, applyRedaction, wasRedactionApplied } = sandbox;
+const { extractScannable, applyRedaction, wasRedactionApplied, sniffFileExt, guessUploadExt } = sandbox;
 
 let failures = 0;
 function assert(cond, msg) {
@@ -152,6 +156,31 @@ function assert(cond, msg) {
   const body = "100% guaranteed, not a % encoding sequence at all";
   const extracted = extractScannable(body);
   assert(extracted.text === body, "malformed %-sequence: falls back to the original text instead of throwing");
+}
+
+// --- AGENT-FILE-004: magic-byte sniffing for pre-signed-URL binary uploads ---
+{
+  const u8 = (...bytes) => new Uint8Array(bytes);
+  assert(sniffFileExt(u8(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) === "png", "sniff: PNG signature -> png");
+  assert(sniffFileExt(u8(0xff, 0xd8, 0xff, 0xe0, 0, 0x10)) === "jpg", "sniff: JPEG signature -> jpg");
+  assert(sniffFileExt(u8(0x25, 0x50, 0x44, 0x46, 0x2d, 0x31)) === "pdf", "sniff: %PDF signature -> pdf");
+  assert(sniffFileExt(u8(0x47, 0x49, 0x46, 0x38, 0x39, 0x61)) === "gif", "sniff: GIF89a signature -> gif");
+  assert(sniffFileExt(u8(0x42, 0x4d, 0x1e, 0)) === "bmp", "sniff: BM signature -> bmp");
+  assert(sniffFileExt(u8(0x49, 0x49, 0x2a, 0x00)) === "tif", "sniff: little-endian TIFF -> tif");
+  assert(
+    sniffFileExt(u8(0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50)) === "webp",
+    "sniff: RIFF....WEBP -> webp"
+  );
+  assert(sniffFileExt(u8(0, 1, 2, 3, 4, 5, 6, 7)) === null, "sniff: unknown bytes -> null (falls back to guessUploadExt)");
+  assert(sniffFileExt(u8(1, 2)) === null, "sniff: too-short header -> null, no throw");
+  // The real-world regression: octet-stream PUT, no usable Content-Type, so
+  // guessUploadExt alone would have produced "upload.bin" and the agent
+  // would skip OCR. The sniff is what saves it.
+  assert(guessUploadExt(null, "application/octet-stream") === "bin", "guessUploadExt still returns bin for octet-stream (why the sniff is needed)");
+  assert(
+    sniffFileExt(u8(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) === "png",
+    "a PNG PUT as application/octet-stream is now identified as png, not bin"
+  );
 }
 
 console.log(failures === 0 ? "\nAll extraction/redaction logic checks passed." : `\n${failures} check(s) FAILED.`);
