@@ -203,6 +203,30 @@ impl PiiScanner {
                     regex: Regex::new(r"\b[MSRODmsrod]\d{8}\b").unwrap(),
                     context_required: true,
                 },
+                // Canada: 2 letters + 6 digits (e.g. "GA123456"). Presidio
+                // ships no Canada recognizer to port from -- this is the
+                // published Passport Canada booklet-number format
+                // (Government of Canada / IRCC docs). Added 2026-09-07 after
+                // a real-OCR sample sweep: a genuine Canadian passport image
+                // ("Passport No. GB847363") came back with zero findings
+                // because no pattern matched a 2+6 shape at all. Weak, so
+                // context-gated like every non-India entry here.
+                PassportPattern {
+                    match_name: "PASSPORT_NUMBER_CA",
+                    regex: Regex::new(r"(?i)\b[A-Z]{2}\d{6}\b").unwrap(),
+                    context_required: true,
+                },
+                // Australia, older single-letter series: 1 letter + 7
+                // digits (e.g. "N1234567"), a DFAT-published shape. The
+                // current 2-letter series (e.g. "PA0940443") is already
+                // covered by the UK/Italy `[A-Z]{2}\d{7}` entry above (same
+                // shape) and, for a genuine document, by `mrz_regex`; only
+                // the distinct single-letter form is added here.
+                PassportPattern {
+                    match_name: "PASSPORT_NUMBER_AU",
+                    regex: Regex::new(r"(?i)\b[A-Z]\d{7}\b").unwrap(),
+                    context_required: true,
+                },
             ],
             // MRZ (Machine Readable Zone), TD3/passport format: two 44-char
             // lines. Line 1 is the name/issuing-country line; line 2 packs
@@ -801,6 +825,17 @@ const PASSPORT_CONTEXT_KEYWORDS: &[&str] = &[
     "document no",
     "passport details",
     "passport",
+    // 2026-09-07: the non-English label printed alongside "PASSPORT" on
+    // essentially every ICAO travel document -- FR "passeport", ES/PT
+    // "pasaporte" / "passaporte", DE "reisepass"/"pass", IT "passaporto".
+    // A real Canadian passport OCR'd here as "Passport No.N de passeport
+    // \nGB847363" -- the English "passport no" was just outside the
+    // 40-char window from the number, but "passeport" was adjacent.
+    "passeport",
+    "pasaporte",
+    "passaporte",
+    "reisepass",
+    "passaporto",
 ];
 
 /// Date-of-birth keywords. Deliberately does NOT include "date of issue"/
@@ -817,6 +852,31 @@ const DOB_CONTEXT_KEYWORDS: &[&str] = &[
     "birth date",
     "born on",
     "born:",
+    // 2026-09-07: OCR of a real US passport photo rendered "Date of birth"
+    // as "Pate of bith" -- close enough for a human, invisible to an exact
+    // `contains`. Real-world OCR of this exact printed label reliably
+    // corrupts the same few characters (D->P/B/O, r->n, drops the middle
+    // of "birth"). These are the specific corruptions seen in the sample
+    // sweep, not speculative -- each still needs a date-shaped match
+    // within 40 chars to fire, so the added recall doesn't loosen the
+    // "bare date is never PII on its own" posture.
+    "pate of bith",
+    "date of bith",
+    "date ol birth",
+    "dale of birth",
+    "date of birh",
+    // The label printed next to the DOB on essentially every non-English
+    // ICAO passport: FR "date de naissance", ES "fecha de nacimiento",
+    // PT "data de nascimento", DE "geburtsdatum", IT "data di nascita".
+    // "lieu de naissance" (place of birth) also contains "naissance", but
+    // that field carries a place, not a date -- the date regex won't
+    // match there, so keying on "naissance" still only ever attaches to
+    // an actual date, which next to "naissance" is the date of birth.
+    "naissance",
+    "nacimiento",
+    "nascimento",
+    "geburt",
+    "nascita",
 ];
 
 /// EIN context keywords. "fein" (Federal EIN) and "tax id" both appear in
@@ -1265,6 +1325,100 @@ mod tests {
         let text = format!("client_thread_id 481349481 {filler} I have a passport somewhere");
         let findings = scanner.scan(&text);
         assert!(!findings.iter().any(|f| f.match_name == "PASSPORT_NUMBER_US"), "a bare 9-digit ID must not be flagged when 'passport' is outside the context window, got {findings:?}");
+    }
+
+    #[test]
+    fn test_canada_passport_number_detected_with_context() {
+        // 2026-09-07 regression: a real Canadian passport image OCR'd as
+        // "...Passport No.N de passeport\nGB847363\nSumame..." produced zero
+        // findings -- no pattern matched a 2-letters + 6-digits shape.
+        let scanner = PiiScanner::new();
+        let bare = scanner.scan("order ref GB847363 shipped");
+        assert!(
+            !bare.iter().any(|f| f.match_name == "PASSPORT_NUMBER_CA"),
+            "a 2+6 token with no passport context must not fire, got {bare:?}"
+        );
+        // "passeport" is the only passport cue inside the 40-char window here.
+        let ctx = scanner.scan("Passport No.N de passeport GB847363 Surname");
+        let f = ctx
+            .iter()
+            .find(|f| f.match_name == "PASSPORT_NUMBER_CA")
+            .expect("Canada passport number should fire with a nearby cue");
+        assert_eq!(f.severity, "HIGH");
+        assert_eq!(f.redacted_replacement.as_deref(), Some("[REDACTED_PASSPORT]"));
+    }
+
+    #[test]
+    fn test_australia_single_letter_passport_number_needs_context() {
+        let scanner = PiiScanner::new();
+        assert!(
+            !scanner.scan("serial N1234567 rev B").iter().any(|f| f.match_name == "PASSPORT_NUMBER_AU"),
+            "a bare letter+7-digit token must not fire without context"
+        );
+        assert!(
+            scanner.scan("Australian passport no N1234567").iter().any(|f| f.match_name == "PASSPORT_NUMBER_AU"),
+            "letter+7 digits with a passport cue should fire"
+        );
+    }
+
+    #[test]
+    fn test_dob_detected_through_ocr_corrupted_and_non_english_cues() {
+        // 2026-09-07 regression: OCR of a real US passport rendered the DOB
+        // label "Date of birth" as "Pate of bith", so the exact-substring
+        // context gate missed and "22 Jan 1974" passed through in the clear.
+        let scanner = PiiScanner::new();
+        for text in [
+            "UNITED STATES OF AMERICA\n22 Jan 1974\nPate of bith",
+            "Date de naissance / Date of birth\n07 JUN 1984",
+            "Fecha de nacimiento 03 MAR 1990",
+        ] {
+            let findings = scanner.scan(text);
+            assert!(
+                findings.iter().any(|f| f.match_name == "DATE_OF_BIRTH"),
+                "expected a DOB finding for {text:?}, got {findings:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_real_ocr_output_from_the_two_previously_missed_sample_passports() {
+        // Verbatim OCR (oar-ocr / PP-OCR) output from the real
+        // D:\Safeprompt\samples\passport images that came back with ZERO
+        // findings before 2026-09-07 -- the regression cases behind the
+        // Canada-pattern + OCR-corrupted-DOB-cue additions. The MRZ in both
+        // is either broken across lines (Canada) or synthetic with fake
+        // check digits (US sample), so `mrz_regex` legitimately doesn't
+        // save either -- the printed-zone detectors have to.
+        let scanner = PiiScanner::new();
+
+        let canada = "PASSPORT\nCANADA\n0\nPASSEPORT\nissuing Country/Pays emetteur\nCAN\n\
+                      Passport No.N\" de passeport\nGB847363\nSumame/Nom\nGUANGZHOU";
+        assert!(
+            scanner.scan(canada).iter().any(|f| f.match_name == "PASSPORT_NUMBER_CA"),
+            "Canada passport number GB847363 next to 'passeport' should be flagged, got {:?}",
+            scanner.scan(canada)
+        );
+
+        let us = "Nacionalidad\nUNITED STATES OF AMERICA\n22 Jan 1974\n\
+                  Pate of bith / Lieu de naissanoe/ Lugar de nacimiento\nSex /Sexe/ Sexo\nMumbai, INDIA";
+        assert!(
+            scanner.scan(us).iter().any(|f| f.match_name == "DATE_OF_BIRTH"),
+            "DOB '22 Jan 1974' next to OCR-mangled 'Pate of bith' should be flagged, got {:?}",
+            scanner.scan(us)
+        );
+    }
+
+    #[test]
+    fn test_place_of_birth_line_without_a_date_is_not_a_dob_finding() {
+        // "naissance" is now a DOB cue, and "lieu de naissance" (place of
+        // birth) contains it -- but that field carries a place, not a date,
+        // so the date regex has nothing to match and no finding is produced.
+        let scanner = PiiScanner::new();
+        let findings = scanner.scan("Lieu de naissance / Place of birth: Mumbai, INDIA");
+        assert!(
+            !findings.iter().any(|f| f.match_name == "DATE_OF_BIRTH"),
+            "a place-of-birth line with no date must not yield a DOB finding, got {findings:?}"
+        );
     }
 
     /// Builds a checksum-valid MRZ (TD3, passport) two-line block for a
