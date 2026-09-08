@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SafePrompt — AI Security Gateway",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Inspects and protects every prompt and AI response in your browser -- secrets, PII, and prompt injection -- before anything leaves the page. Not just DLP: full AI Security Gateway coverage for ChatGPT, Claude, Gemini, Perplexity, and Grok.",
   "icons": {
     "16": "icons/icon16.png",
