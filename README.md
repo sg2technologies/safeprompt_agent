@@ -124,11 +124,27 @@ target/release/
 
 **[crates/ocr/README.md](crates/ocr/README.md)** has the exact download links, pinned versions, SHA-256 hashes to verify against, and a copy-pasteable PowerShell script that fetches and places both files for you. Linux/macOS use the platform-appropriate filename (`libonnxruntime.so`/`libonnxruntime.dylib`, etc.) — the same doc has what's known so far for those.
 
-### Known limitations
+## Limitations
 
-- **English recognition only.** The bundled PP-OCRv5 model reads the Latin alphabet. Text in other scripts — including the Hindi / regional-language portions of a document like an Indian Aadhaar card — is not recognised yet; the Latin-script fields on the same document (ID numbers, English names, passport MRZ lines) still are. Swappable multi-language model packs are planned, not shipped.
-- **Scanned-PDF detection is per-document, not per-page.** A PDF that mixes a digital text layer with one scanned page is classified "has text", so that scanned page is read from its (absent) text layer rather than OCR'd.
-- **No byte-size or wall-clock budget on OCR / document parsing yet** — page count is capped (20 per PDF) but a deliberately pathological file can still run up CPU/memory. See [Enterprise edition](#enterprise-edition) below.
+These are the known cases where a file or image in Community edition is **not fully scanned** and passes through. They're listed here rather than left to be discovered. In every case the behaviour is *fail-open* (the upload is allowed, logged as a warning) — Community's goal is to catch the common cases without breaking your workflow, not to be an airtight gateway.
+
+Fuller handling of the items below — additional OCR languages, large-file and archive inspection, and a fail-*closed* policy option for unscannable uploads — is on the **[Enterprise](#enterprise-edition)** roadmap, aimed at the fleet deployments most exposed to a deliberately hostile file.
+
+**OCR / images**
+
+- **English (Latin script) recognition only.** The bundled PP-OCRv5 model does not read Devanagari, Tamil, Telugu, Kannada, Malayalam, etc. On a document like an Indian Aadhaar card the regional-language text is missed; the Latin-script fields on the same card (the ID number, English name, DOB, passport MRZ lines) are still read. `oar-ocr` supports swapping in other PP-OCRv5 language packs — additive work, not yet wired up.
+- **HEIC / HEIF images are not scanned.** The `image` decoder has no HEIC support, and it isn't a recognised image extension — an iPhone "High Efficiency" photo uploaded as `.heic` passes through. (iOS Safari usually transcodes to JPEG on upload; a `.heic` file dragged in on desktop does not.)
+- **AVIF images are not scanned** — decode support isn't compiled in.
+- **Animated GIF / multi-page TIFF: only the first frame/page is OCR'd.**
+- **Scanned PDFs: only the first 20 pages are OCR'd** (`MAX_OCR_PAGES`); content on later pages is not scanned.
+- **Mixed digital + scanned PDFs:** the scanned-vs-digital check is per-document, not per-page, so one scanned page inside an otherwise digital-text PDF is read from its (absent) text layer, not OCR'd.
+
+**File handling**
+
+- **Uploads larger than 20 MB are not scanned** (`MAX_SCANNED_FILE_BYTES`).
+- **Encrypted / password-protected documents** (PDF, `.docx`, `.xlsx`) can't be parsed, so they pass through unscanned.
+- **Archives (`.zip`, `.rar`, `.7z`, `.tar.gz`) are not opened** — SafePrompt does not recurse into archive contents.
+- **No byte-size or wall-clock budget on document parsing yet** — a deliberately pathological file (decompression bomb, huge page count) can run a device's CPU/memory up.
 
 ## Security & privacy
 
@@ -155,7 +171,14 @@ Need centralized policy management across a fleet, SIEM/syslog export, advanced 
 
 Enterprise is a **separate, proprietary product** — its fleet management, SSO/RBAC, SIEM integration, compliance reporting, and GPO/Intune deployment tooling are not included in this repository (see [License](#license) below).
 
-**Planned:** resource-exhaustion hardening for OCR/document processing (page-count, image-dimension, decompression, and processing-time limits, plus a cap on concurrent OCR jobs) so a pathological file can't be used to run a device's CPU/memory up. Not shipped yet in either edition today — Community's only current guard is the extension's flat per-upload size cap (see [OCR support](#ocr-support) above) — but it's scoped for Enterprise first, given who's most exposed to a deliberately hostile file (a fleet accepting uploads at scale) rather than a single self-hosted install.
+**Planned for Enterprise** (see [Limitations](#limitations) above for what Community does today):
+
+- **Multi-language OCR** — Devanagari and other Indian-script recognition packs for regional ID documents.
+- **Broader file coverage** — HEIC/HEIF and AVIF images, archive (`.zip`/`.rar`/`.7z`) recursion, and a raised or configurable per-upload size limit.
+- **Fail-closed policy** — an option to *block* an upload that can't be fully scanned (encrypted document, unsupported format, over-size) instead of allowing it through.
+- **Resource-exhaustion hardening** — page-count, image-dimension, decompression, and processing-time limits plus a concurrent-OCR-job cap, so a pathological file can't run a device's CPU/memory up.
+
+Scoped for Enterprise first because a fleet accepting uploads at scale is the deployment most exposed to a deliberately hostile file, not a single self-hosted install.
 
 **→ [www.safeprompt.pro](https://www.safeprompt.pro/)**
 
