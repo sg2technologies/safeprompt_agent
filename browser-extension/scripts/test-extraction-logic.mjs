@@ -83,6 +83,33 @@ function assert(cond, msg) {
   assert(redacted.conversation_id === "583aa39a-95c1-4f59-aa79-afffd1d73857", "ChatGPT shape: redaction leaves conversation_id untouched");
 }
 
+// --- claude.ai completion shape: top-level `prompt` is the message, the ---
+// --- `prompt` inside every personalized_styles entry is template noise ---
+// (2026-09-08: claude.ai gzips this body in a worker; once inflated it has
+// 4+ "prompt" strings, and without the top-level filter applyRedaction
+// can't safely substitute and a real secret goes through unmasked.)
+{
+  const body = JSON.stringify({
+    prompt: "my password is U7890Yu",
+    parent_message_uuid: "00000000-0000-4000-8000-000000000000",
+    timezone: "Asia/Calcutta",
+    personalized_styles: [
+      { type: "default", key: "Default", name: "Normal", prompt: "Normal", isDefault: true },
+      { type: "custom", key: "Concise", name: "Concise", prompt: "Concise responses please" },
+    ],
+    rendering_mode: "messages",
+  });
+  const extracted = extractScannable(body);
+  assert(extracted.locations.length === 1, "claude shape: only the top-level prompt is a content location");
+  assert(extracted.text === "my password is U7890Yu", "claude shape: scanned text is just the user's message");
+  assert(!extracted.text.includes("Concise responses"), "claude shape: personalized_styles prompt strings excluded");
+
+  const redacted = JSON.parse(applyRedaction(extracted, "my password is [REDACTED_PASSWORD]"));
+  assert(redacted.prompt === "my password is [REDACTED_PASSWORD]", "claude shape: redaction hits the top-level prompt");
+  assert(redacted.personalized_styles[1].prompt === "Concise responses please", "claude shape: redaction leaves style prompts untouched");
+  assert(wasRedactionApplied(extracted), "claude shape: redaction is reported as applied");
+}
+
 // --- OpenAI-compatible {role, content} shape ---
 {
   const body = JSON.stringify({
