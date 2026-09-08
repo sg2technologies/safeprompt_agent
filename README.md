@@ -13,7 +13,7 @@ This repository is the **Community edition**: the Rust Agent (`agent/` at the re
 ## Features
 
 - **On-device detection** — API keys & credentials, PII (names, emails, phone numbers, government IDs), financial data (cards, account numbers), internal hostnames, prompt-injection attempts, and custom keyword rules
-- **File & image scanning** — `.txt`, `.docx`, `.pdf`, and scanned/photographed documents via on-device OCR
+- **File & image scanning** — plain text and `.docx`/`.pdf` natively; legacy Office (`.doc`/`.ppt`/`.xls`), OpenDocument, `.rtf`, `.epub` via the `anydoc` extractor; images (PNG/JPEG/WebP/GIF/BMP/TIFF) and scanned/photographed PDFs via on-device OCR. Uploads a site sends as a generic `application/octet-stream` (no usable filename) are identified by content, not extension — a mislabelled image can't skip OCR
 - **In-place masking** — plain-text file uploads (`.txt`, `.csv`, `.json`, `.md`, `.log`, `.yaml`, `.xml`, `.html`) are redacted and still sent, instead of being blocked outright
 - **Configurable policy** — turn detectors on or off, choose Allow / Warn / Mask / Block / Require-approval per category
 - **Pause protection** — a one-button, auto-expiring pause (15 min / 1 hour / 4 hours) for the rare "let me send this one thing" case, instead of hand-editing per-category settings and having to remember to revert them
@@ -123,6 +123,12 @@ target/release/
 ```
 
 **[crates/ocr/README.md](crates/ocr/README.md)** has the exact download links, pinned versions, SHA-256 hashes to verify against, and a copy-pasteable PowerShell script that fetches and places both files for you. Linux/macOS use the platform-appropriate filename (`libonnxruntime.so`/`libonnxruntime.dylib`, etc.) — the same doc has what's known so far for those.
+
+### Known limitations
+
+- **English recognition only.** The bundled PP-OCRv5 model reads the Latin alphabet. Text in other scripts — including the Hindi / regional-language portions of a document like an Indian Aadhaar card — is not recognised yet; the Latin-script fields on the same document (ID numbers, English names, passport MRZ lines) still are. Swappable multi-language model packs are planned, not shipped.
+- **Scanned-PDF detection is per-document, not per-page.** A PDF that mixes a digital text layer with one scanned page is classified "has text", so that scanned page is read from its (absent) text layer rather than OCR'd.
+- **No byte-size or wall-clock budget on OCR / document parsing yet** — page count is capped (20 per PDF) but a deliberately pathological file can still run up CPU/memory. See [Enterprise edition](#enterprise-edition) below.
 
 ## Security & privacy
 
