@@ -15,6 +15,10 @@
 // auth (a service worker's fetch, unlike a page-context one, isn't subject
 // to CORS and carries an unforgeable Origin header).
 (function () {
+  // Bump this string on every change to this file so a console log tells us
+  // at a glance whether the staged/loaded copy is current (see
+  // scripts/stage-unpacked.ps1 -- Chrome loads dist-unpacked/, not src/).
+  const BUILD_TAG = "2026-09-08-file-ext-sniff+composer";
   const RESPONSE_TIMEOUT_MS = 5000;
   // File/image scanning runs OCR + document extraction, which is far slower
   // than a text scan -- a passport photo alone is a couple of seconds. A
@@ -171,13 +175,29 @@
     if (ascii(0, "BM")) return "bmp";
     if (at(0, 0x49, 0x49, 0x2a, 0x00) || at(0, 0x4d, 0x4d, 0x00, 0x2a)) return "tif";
     if (b.length >= 12 && ascii(0, "RIFF") && ascii(8, "WEBP")) return "webp";
+    if (ascii(0, "PK") && (b[2] === 0x03 || b[2] === 0x05 || b[2] === 0x07)) {
+      // ZIP container -- could be OOXML (docx/xlsx/pptx), ODF, or a plain
+      // .zip. Scan the first few KB (entry names live near the front) for
+      // the marker directory each office format always carries. Falls back
+      // to "zip" so at least the agent gets a real archive to look inside
+      // rather than "upload.bin" (unrecognized -> skipped entirely).
+      const txt = String.fromCharCode.apply(null, b.subarray(0, Math.min(b.length, 4096)));
+      if (txt.includes("word/")) return "docx";
+      if (txt.includes("xl/")) return "xlsx";
+      if (txt.includes("ppt/")) return "pptx";
+      if (txt.includes("mimetypeapplication/vnd.oasis.opendocument.text")) return "odt";
+      if (txt.includes("mimetypeapplication/vnd.oasis.opendocument.spreadsheet")) return "ods";
+      if (txt.includes("mimetypeapplication/vnd.oasis.opendocument.presentation")) return "odp";
+      return "zip";
+    }
+    if (at(0, 0xd0, 0xcf, 0x11, 0xe0)) return "doc"; // legacy OLE2 (.doc/.xls/.ppt)
     return null;
   }
 
   async function sniffBodyExt(body) {
     try {
       const blob = body instanceof Blob ? body : new Blob([body]);
-      const header = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+      const header = new Uint8Array(await blob.slice(0, 4096).arrayBuffer());
       return sniffFileExt(header);
     } catch (_e) {
       return null;
@@ -241,13 +261,30 @@
         log("binary upload not scanned", { url, size, reason: size ? "over cap" : "empty" });
         return { blocked: false };
       }
-      // Prefer the real type sniffed from the bytes (see sniffFileExt) --
-      // the Content-Type on these pre-signed PUTs is unreliable
-      // ("application/octet-stream"), and an "upload.bin" filename makes
-      // the agent skip OCR entirely.
-      const ext = (await sniffBodyExt(body)) || guessUploadExt(body, contentType);
-      const filename = `upload.${ext}`;
-      log("binary upload -> inspecting", { url, filename, size });
+      // Filename resolution, best source first:
+      //  1) the real File.name if the body is a File (Gemini PUTs the
+      //     picked File directly -- .name carries "Employee_Onboarding_
+      //     Form.docx", which is all the agent's file_inspector needs).
+      //     Byte-sniffing can't tell a .docx from a .xlsx (both are ZIPs),
+      //     so a real name beats a guess.
+      //  2) bytes sniffed from the header (PNG/JPEG/PDF pre-signed PUTs
+      //     that arrive as bare ArrayBuffers with no name and a useless
+      //     Content-Type).
+      //  3) the Content-Type mapping.
+      // An "upload.bin" filename makes the agent skip OCR/extraction
+      // entirely, so getting this right is what makes file scanning work.
+      const nameExt = body instanceof File && typeof body.name === "string" && /\.[A-Za-z0-9]{1,12}$/.test(body.name)
+        ? body.name.slice(body.name.lastIndexOf(".") + 1).toLowerCase()
+        : null;
+      const sniffed = await sniffBodyExt(body);
+      const ext = nameExt || sniffed || guessUploadExt(body, contentType);
+      const filename = body instanceof File && body.name ? body.name : `upload.${ext}`;
+      let headHex = "";
+      try {
+        const b = body instanceof Blob ? body : new Blob([body]);
+        headHex = Array.from(new Uint8Array(await b.slice(0, 8).arrayBuffer())).map((x) => x.toString(16).padStart(2, "0")).join(" ");
+      } catch (_e) { /* diagnostic only */ }
+      log("binary upload -> inspecting", { url, filename, size, ctor: body && body.constructor && body.constructor.name, nameExt, sniffed, contentType, head: headHex });
       const dataBase64 = await bodyToBase64(body);
       const verdict = await askAgentFile(filename, dataBase64);
       log("binary upload <- verdict", { url, filename, action: verdict && verdict.action, findings: safeFindings(verdict && verdict.findings), unmaskable_reason: verdict && verdict.unmaskable_reason });
@@ -563,8 +600,18 @@
     } catch (_e) {
       return { text: safeUrlDecode(rawBody), parsed: null, locations: [] }; // not JSON (form/plain-text body)
     }
-    const locations = [];
+    let locations = [];
     collectContentLocations(parsed, null, null, false, locations);
+    // 2026-09-08: claude.ai's completion body carries the user's message as
+    // a top-level `prompt`, but ALSO a `prompt` string inside every entry of
+    // `personalized_styles` (["Normal", "Concise", ...]) and similar nested
+    // metadata. Left as-is that's 4+ "content" locations, so applyRedaction
+    // can't safely substitute and a real secret in the message goes through
+    // unmasked. When a content field sits at the top level of the object,
+    // that's the message -- scan/redact only those and ignore the nested
+    // template strings.
+    const topLevel = locations.filter((loc) => loc.parent === parsed);
+    if (topLevel.length > 0) locations = topLevel;
     const text = locations.length > 0 ? locations.map((loc) => loc.parent[loc.key]).join("\n") : safeUrlDecode(rawBody);
     return { text, parsed, locations };
   }
@@ -702,6 +749,143 @@
       : findings;
   }
 
+  // 2026-09-08 (user-reported: "my password is ..." went straight to
+  // claude.ai unmasked, worked fine on ChatGPT/Gemini). claude.ai now runs
+  // its chat-completion request body through a compression Web Worker
+  // ("completionGzipWorker-*.js") and sends the RAW COMPRESSED BYTES -- so
+  // `init.body` is a Blob/ArrayBuffer, not a JSON string. That sailed past
+  // the string-body scan path below, and `scanBinaryUpload` (which it hit
+  // instead) base64s the compressed bytes as `upload.bin` and the agent
+  // finds nothing scannable in compressed data -> Allow. Live-confirmed in
+  // the console log: `binary upload -> inspecting {url: '.../completion',
+  // filename: 'upload.bin'}` -> `action: 'Allow'`.
+  //
+  // Fix: sniff the compression format (gzip / zlib / raw deflate), inflate
+  // it with the platform DecompressionStream, and hand the JSON back to the
+  // exact same extract/scan/redact flow every other site uses. On a Redact
+  // we re-compress the rewritten JSON in the SAME format so claude's server
+  // still gets the encoding it expects. Only takes over when the inflated
+  // body actually parses as JSON -- a genuine binary upload (not JSON)
+  // falls through to the existing binary path unchanged, no regression.
+  const DECOMPRESSION_STREAM_OK =
+    typeof DecompressionStream !== "undefined" && typeof CompressionStream !== "undefined";
+
+  async function bodyToBytes(body) {
+    try {
+      if (body instanceof Uint8Array) return body;
+      if (body instanceof ArrayBuffer) return new Uint8Array(body);
+      if (ArrayBuffer.isView && ArrayBuffer.isView(body)) return new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+      if (body instanceof Blob) return new Uint8Array(await body.arrayBuffer());
+    } catch (_e) { /* fall through */ }
+    return null;
+  }
+
+  function looksGzip(bytes) {
+    return !!bytes && bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+  }
+  // zlib stream: CMF/FLG where CMF low nibble is 8 (deflate) and
+  // (CMF<<8 | FLG) % 31 === 0. Covers the common 0x78 0x01/0x9c/0xda.
+  function looksZlib(bytes) {
+    return !!bytes && bytes.length > 2 && (bytes[0] & 0x0f) === 0x08 && ((bytes[0] << 8) | bytes[1]) % 31 === 0;
+  }
+
+  // DecompressionStream format(s) worth trying for these bytes. Requires a
+  // recognizable header -- gzip (1f 8b) or zlib (0x78 ...) -- so a raw
+  // image/PDF upload isn't put through three pointless inflate attempts;
+  // headerless raw deflate for a request body is not a thing claude does.
+  function candidateFormats(bytes) {
+    if (looksGzip(bytes)) return ["gzip"];
+    if (looksZlib(bytes)) return ["deflate"];
+    return [];
+  }
+
+  async function streamConvert(bytes, transform) {
+    const stream = new Blob([bytes]).stream().pipeThrough(transform);
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
+  async function inflate(bytes, format) {
+    return streamConvert(bytes, new DecompressionStream(format));
+  }
+  async function deflate(text, format) {
+    return streamConvert(new TextEncoder().encode(text), new CompressionStream(format));
+  }
+
+  // Returns null  -> not a compressed JSON body; caller keeps doing what it
+  //                  does today (fall through to binary scan).
+  //         {stop:true}        -> block the send.
+  //         {stop:false}       -> send unchanged.
+  //         {stop:false, body} -> send this (re-compressed) body instead.
+  async function scanCompressedJsonBody(body, url) {
+    if (!DECOMPRESSION_STREAM_OK) return null;
+    const bytes = await bodyToBytes(body);
+    if (!bytes || bytes.length < 2 || bytes.length > MAX_SCANNED_FILE_BYTES) return null;
+    const head = Array.from(bytes.slice(0, 4)).map((b) => b.toString(16).padStart(2, "0")).join(" ");
+
+    const formats = candidateFormats(bytes);
+    if (formats.length === 0) return null; // no compression header -- not our case
+
+    let bodyText = null;
+    let format = null;
+    for (const fmt of formats) {
+      try {
+        const out = await inflate(bytes, fmt);
+        const text = new TextDecoder("utf-8", { fatal: true }).decode(out);
+        if (text) { bodyText = text; format = fmt; break; }
+      } catch (_e) { /* wrong format guess -- try the next */ }
+    }
+    if (bodyText === null) {
+      log("compressed body -- header looked compressed but inflate failed, leaving it to the binary scan path", { url, head, bytes: bytes.length });
+      return null;
+    }
+
+    const extracted = extractScannable(bodyText);
+    if (extracted.parsed === null) {
+      log("inflated body isn't JSON -- leaving it to the binary scan path", { url, head, format });
+      return null; // a real compressed file upload, not a chat payload
+    }
+    if (extracted.locations.length === 0) {
+      // Valid JSON but no recognized chat-content field -- overwhelmingly a
+      // site's own compressed telemetry/logging batch (play.google.com/log,
+      // Segment, Datadog RUM, ...), not a user prompt. Same call the
+      // uncompressed path already makes; scanning it just produces
+      // false-positive "couldn't safely mask" toasts on the site's own
+      // analytics. Leave it alone.
+      log("inflated body has no chat-content field -- treating as telemetry, not scanning", { url, format });
+      return { stop: false };
+    }
+
+    log("compressed body -> inspecting", { url, format, head, extractedLocations: extracted.locations.length, characterCount: extracted.text.length });
+    const verdict = await askAgent("inspect", extracted.text);
+    log("compressed body <- verdict", { url, format, action: verdict && verdict.action, findings: safeFindings(verdict && verdict.findings) });
+    const outcome = verdictOutcome(verdict);
+    if (outcome.stop) {
+      showToast(outcome.toast[0], outcome.toast[1]);
+      return { stop: true };
+    }
+    if (outcome.redact && verdict.sanitized_prompt) {
+      const redacted = applyRedaction(extracted, verdict.sanitized_prompt);
+      if (!wasRedactionApplied(extracted)) {
+        const fallback = unredactedFallbackToast(describeFindings(verdict.findings));
+        showToast(fallback[0], fallback[1]);
+        return { stop: false };
+      }
+      try {
+        const reBody = await deflate(redacted, format);
+        showToast(outcome.toast[0], outcome.toast[1]);
+        return { stop: false, body: reBody };
+      } catch (e) {
+        // Re-compressing failed -- rather than send a body claude can't
+        // decode, block the send and be explicit about why.
+        showToast("block", `Blocked by SafePrompt: ${describeFindings(verdict.findings)} detected (couldn't safely re-mask a compressed request)`);
+        log("re-compress after redaction failed -- blocked", { url, format, error: String(e) });
+        return { stop: true };
+      }
+    }
+    if (outcome.toast) showToast(outcome.toast[0], outcome.toast[1]); // Warn / Audit
+    return { stop: false };
+  }
+
   const originalFetch = window.fetch.bind(window);
 
   window.fetch = async function safePromptFetch(input, init) {
@@ -716,6 +900,13 @@
       try {
         const buf = await input.clone().arrayBuffer();
         if (buf && buf.byteLength > 0 && buf.byteLength <= MAX_SCANNED_FILE_BYTES) {
+          // claude.ai's compressed completion body (see scanCompressedJsonBody).
+          const gz = await scanCompressedJsonBody(buf, url);
+          if (gz) {
+            if (gz.stop) throw new TypeError("Failed to fetch");
+            if (gz.body) input = new Request(input, { body: gz.body });
+            return originalFetch(input, init);
+          }
           const ct = headerValue(input.headers, "content-type") || "";
           // Only treat it as a file if it isn't obviously JSON/text/form.
           if (!/json|x-www-form-urlencoded|multipart/i.test(ct)) {
@@ -760,6 +951,12 @@
     // scanBinaryUpload's own comment). Either method; the body is a
     // Blob/ArrayBuffer, never FormData or a string.
     if ((method === "PUT" || method === "POST") && init && isBinaryBody(init.body)) {
+      // claude.ai's compressed completion body (see scanCompressedJsonBody).
+      const gz = await scanCompressedJsonBody(init.body, url);
+      if (gz) {
+        if (gz.stop) throw new TypeError("Failed to fetch");
+        return originalFetch(input, gz.body ? { ...init, body: gz.body } : init);
+      }
       const ct = ((init.body && init.body.type) || headerValue(init.headers, "content-type") || "").toLowerCase();
       if (!/json|x-www-form-urlencoded|multipart/i.test(ct)) {
         const result = await scanBinaryUpload(init.body, ct, url);
@@ -981,11 +1178,20 @@
     return (platform.isContentEditable ? el.textContent : el.value) || "";
   }
 
-  // Sets text via the native value setter (bypassing React's own tracked
-  // setter, same reason the old extension did this) so the site's own
-  // framework actually notices the change, then fires a real "input"
-  // event so it re-renders/re-validates -- a raw `.value = ...` assignment
-  // alone is invisible to React-controlled inputs.
+  // Replace the whole contents of the input with `text` in a way each
+  // site's editor framework actually registers -- so the redacted text is
+  // what the user sees in the composer AND what the site serialises into
+  // its outgoing request. Returns true if `getText` reflects the change.
+  //
+  // 2026-09-08: this used to be one `execCommand("insertText")` call. That
+  // updates the DOM synchronously but ChatGPT's/Claude's ProseMirror and
+  // Gemini's Quill both sync their internal model from a MutationObserver
+  // (a microtask), so a `resubmit()` fired on the next line read the STALE
+  // model and sent the unredacted text -- the network layer still masked
+  // the wire, but the composer and the chat bubble showed the secret, so
+  // it looked like nothing happened. Fixed by (a) a layered set that also
+  // works when execCommand is a no-op, (b) callers awaiting settleEditor()
+  // before resubmitting.
   function setText(el, platform, text) {
     if (!platform.isContentEditable) {
       const setter = Object.getOwnPropertyDescriptor(
@@ -998,15 +1204,48 @@
       } else {
         el.value = text;
       }
-      return;
+      return getText(el, platform).trim() === text.trim();
     }
+
     el.focus();
-    const range = document.createRange();
-    range.selectNodeContents(el);
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    sel?.addRange(range);
-    document.execCommand("insertText", false, text);
+    const selectAll = () => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    };
+
+    // 1) Native editing command -- fires beforeinput/input, which
+    //    ProseMirror and Quill both honour when it works.
+    selectAll();
+    try { document.execCommand("insertText", false, text); } catch (_e) { /* fall through */ }
+    if (getText(el, platform).trim() === text.trim()) return true;
+
+    // 2) Synthetic beforeinput of type insertReplacementText -- some
+    //    editor builds ignore execCommand but process this.
+    selectAll();
+    try {
+      el.dispatchEvent(new InputEvent("beforeinput", { inputType: "insertReplacementText", data: text, bubbles: true, cancelable: true }));
+      el.dispatchEvent(new InputEvent("input", { inputType: "insertReplacementText", data: text, bubbles: true }));
+    } catch (_e) { /* fall through */ }
+    if (getText(el, platform).trim() === text.trim()) return true;
+
+    // 3) Last resort: write the DOM directly and notify. Not all
+    //    frameworks re-read from this, but combined with the network-layer
+    //    redaction it at least fixes what the user sees.
+    try {
+      el.textContent = text;
+      el.dispatchEvent(new InputEvent("input", { inputType: "insertText", data: text, bubbles: true }));
+    } catch (_e) { /* nothing else to try */ }
+    return getText(el, platform).trim() === text.trim();
+  }
+
+  // Give the editor's MutationObserver / framework state a chance to catch
+  // up with a programmatic edit before we trigger the send. Two rAFs
+  // straddles a full frame (observer microtasks + any state flush).
+  function settleEditor() {
+    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   }
 
   let bypassNextSubmit = false;
@@ -1035,8 +1274,15 @@
       return; // no resubmit -- the site's own send handler never runs, so it never has a failed request to show an error about
     }
     if (outcome.redact && verdict.sanitized_prompt) {
-      setText(el, platform, verdict.sanitized_prompt);
+      const replaced = setText(el, platform, verdict.sanitized_prompt);
       showToast(outcome.toast[0], outcome.toast[1]);
+      if (replaced) {
+        await settleEditor(); // let the editor's model catch up before we send
+      } else {
+        // The composer still shows the original -- the network layer will
+        // still mask the wire (it re-scans this send), but say so plainly.
+        log("UI intercept -- could not replace composer text; relying on network-layer redaction", { host: location.hostname });
+      }
     } else if (outcome.toast) {
       showToast(outcome.toast[0], outcome.toast[1]); // Warn / Audit -- sent, but flagged
     }
@@ -1087,4 +1333,6 @@
   }
 
   attachSubmitInterceptor();
+
+  log("interceptor active", { build: BUILD_TAG, host: location.hostname, platform: !!currentPlatform() });
 })();
